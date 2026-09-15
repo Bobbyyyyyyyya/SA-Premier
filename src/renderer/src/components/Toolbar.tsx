@@ -7,6 +7,8 @@ const RESOLUTIONS = [
   { label: '4K (3840x2160)', w: 3840, h: 2160 }
 ]
 
+const FPS_PRESETS = [23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60, 120]
+
 export default function Toolbar({ onExport, onHome }: { onExport: () => void; onHome: () => void }): JSX.Element {
   const project = useEditorStore((s) => s.project)
   const zoom = useEditorStore((s) => s.zoom)
@@ -47,7 +49,23 @@ export default function Toolbar({ onExport, onHome }: { onExport: () => void; on
           </option>
         ))}
       </select>
-      <span className="proj-info">{project.fps} fps</span>
+      <select
+        className="proj-info"
+        value={String(project.fps)}
+        title="Project frame rate (ook gebruikt als export-default)"
+        onChange={(e) => {
+          const v = Number(e.target.value)
+          if (Number.isFinite(v)) {
+            useEditorStore.setState((s) => ({ project: { ...s.project, fps: v } }))
+          }
+        }}
+      >
+        {FPS_PRESETS.map((f) => (
+          <option key={f} value={String(f)}>
+            {f} fps
+          </option>
+        ))}
+      </select>
       <button className="primary" onClick={onExport}>
         Export
       </button>

@@ -27,6 +27,8 @@ export interface EditorState {
   updateClip: (id: string, patch: Partial<Clip>) => void
   removeClip: (id: string) => void
   selectClip: (id: string | null) => void
+  splitClip: (id: string, at?: number) => void
+  duplicateClip: (id: string) => void
   addTransition: (fromId: string, type: TransitionType, duration: number) => void
   clearTransition: (clipId: string) => void
 
@@ -172,6 +174,48 @@ export const useEditorStore = create<EditorState>()(
       })),
 
     selectClip: (id) => set({ selectedClipId: id }),
+
+    splitClip: (id, at) => {
+      const { clips, playhead } = get()
+      const orig = clips.find((c) => c.id === id)
+      if (!orig) return
+      const cutAt = at ?? playhead
+      if (cutAt <= orig.start + 0.05 || cutAt >= orig.start + orig.duration - 0.05) return
+      const firstDur = cutAt - orig.start
+      const secondDur = orig.start + orig.duration - cutAt
+      const isMedia = orig.kind === 'video' || orig.kind === 'audio'
+      const secondSource = isMedia ? orig.sourceStart + firstDur : 0
+      const first: Clip = { ...orig, duration: firstDur, transitionOut: null }
+      const second: Clip = {
+        ...orig,
+        id: uid(),
+        start: cutAt,
+        duration: secondDur,
+        sourceStart: secondSource,
+        transitionIn: null
+      }
+      set((s) => ({
+        clips: [...s.clips.filter((c) => c.id !== id), first, second],
+        selectedClipId: second.id,
+        playhead: cutAt
+      }))
+    },
+
+    duplicateClip: (id) => {
+      const { clips } = get()
+      const orig = clips.find((c) => c.id === id)
+      if (!orig) return
+      const copy: Clip = {
+        ...orig,
+        id: uid(),
+        start: orig.start + orig.duration + 0.1,
+        effects: { ...orig.effects },
+        transitionIn: null,
+        transitionOut: null,
+        text: orig.text ? { ...orig.text } : undefined
+      }
+      set((s) => ({ clips: [...s.clips, copy], selectedClipId: copy.id }))
+    },
 
     addTransition: (fromId, type, duration) => {
       const { clips } = get()

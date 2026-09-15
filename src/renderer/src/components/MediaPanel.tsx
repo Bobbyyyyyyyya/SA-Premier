@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useEditorStore } from '../store'
-import { importFiles } from '../lib/inspect'
+import { importFiles, importPaths } from '../lib/inspect'
 import { formatClock } from '../lib/format'
 import AiPanel from './AiPanel'
 import type { ClipEffects } from '../../../shared/types'
@@ -109,6 +109,7 @@ export default function MediaPanel(): JSX.Element {
                   e.dataTransfer.setData('text/plain', a.id)
                 }}
                 onDoubleClick={() => addAtPlayhead(a.id)}
+                title="Dubbelklik = op playhead zetten · sleep naar timeline"
               >
                 <div className="thumb" style={a.thumbnail ? { backgroundImage: `url(${a.thumbnail})` } : {}}>
                   {!a.thumbnail && (a.type === 'audio' ? 'AUDIO' : 'VIDEO')}
@@ -122,7 +123,39 @@ export default function MediaPanel(): JSX.Element {
                         ? `${a.width}x${a.height}`
                         : `${a.width}x${a.height}`}{' '}
                     · {formatClock(a.duration)}
+                    {a.type === 'video' && a.hasAudio ? ' · 🔊' : ''}
                   </div>
+                  {a.type === 'video' && a.hasAudio && (
+                    <div className="btn-row" style={{ marginTop: 4 }}>
+                      <button
+                        style={{ fontSize: 10, padding: '2px 7px' }}
+                        title="Zet audio van deze video als clip op de audiotrack (op playhead)"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          const s = useEditorStore.getState()
+                          let audioTrack = s.tracks.find((x) => x.kind === 'audio')
+                          if (!audioTrack) {
+                            s.addTrack('audio')
+                            audioTrack = useEditorStore.getState().tracks.find((x) => x.kind === 'audio')
+                          }
+                          if (audioTrack) s.addClip(a.id, audioTrack.id, s.playhead)
+                        }}
+                      >
+                        ⤷ audio → track
+                      </button>
+                      <button
+                        style={{ fontSize: 10, padding: '2px 7px' }}
+                        title="Sla alleen het geluid op als WAV/MP3"
+                        onClick={async (e) => {
+                          e.stopPropagation()
+                          const r = await window.api.extractAudio(a.path, { name: a.name.replace(/\.[a-z0-9]+$/i, '') })
+                          if (r.ok && r.outPath) await importPaths([r.outPath], { place: false })
+                        }}
+                      >
+                        💾 audio
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <button className="remove" onClick={() => removeAsset(a.id)} title="Remove">
                   x

@@ -1,0 +1,51 @@
+# SA Premier Full — alles meegeleverd (~8–15 GB)
+# Neemt resources/models + resources/music-models + resources/comfy mee.
+# Zie resources/README.md welke bestanden waar moeten liggen.
+
+appId: com.sapremier.app
+productName: SA Premier Full
+directories:
+  output: dist-full
+files:
+  - out/**/*
+  - package.json
+  - node_modules/ffmpeg-static/**/*
+  - node_modules/fluent-ffmpeg/**/*
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.*'
+  - '!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,test,tests,__tests__,docs}'
+asarUnpack:
+  - 'node_modules/ffmpeg-static/**/*'
+extraResources:
+  - from: resources/models
+    to: models
+  - from: resources/music-models
+    to: music-models
+  - from: resources/comfy
+    to: comfy
+  - from: node_modules/ffmpeg-static
+    to: bin
+    filter:
+      - ffmpeg
+      - ffmpeg.exe
+extraMetadata:
+  version: 0.1.0
+
+mac:
+  category: public.app-category.video
+  target:
+    - dmg
+    - zip
+win:
+  target:
+    - nsis
+    - portable
+linux:
+  target:
+    - AppImage
+    - deb
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

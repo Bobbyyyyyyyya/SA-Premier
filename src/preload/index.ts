@@ -33,6 +33,7 @@ const api = {
   getMediaDuration: (p: string): Promise<number | null> => ipcRenderer.invoke('get-media-duration', p),
 
   aiPing: (): Promise<{ available: boolean; version?: string }> => ipcRenderer.invoke('ai-ping'),
+  aiStart: (): Promise<{ available: boolean; started?: boolean; error?: string }> => ipcRenderer.invoke('ai-start'),
   aiModels: (): Promise<OllamaModelInfo[]> => ipcRenderer.invoke('ai-models'),
   aiText: (model: string, prompt: string): Promise<AiGenerateResult> => ipcRenderer.invoke('ai-text', model, prompt),
   aiBeat: (seconds: number, bpm: number, prompt?: string, modelId?: string): Promise<{ ok: boolean; name?: string; base64?: string; error?: string }> =>
@@ -54,7 +55,7 @@ const api = {
   comfyModels: (): Promise<InstalledModel[]> => ipcRenderer.invoke('comfy-models'),
   comfyCatalog: (): Promise<CatalogModel[]> => ipcRenderer.invoke('comfy-catalog'),
   comfyInstalledDir: (): Promise<boolean> => ipcRenderer.invoke('comfy-installed-dir'),
-  comfyStart: (): Promise<void> => ipcRenderer.invoke('comfy-start'),
+  comfyStart: (): Promise<{ available: boolean; started?: boolean; error?: string }> => ipcRenderer.invoke('comfy-start'),
   comfyInstall: (id: string): Promise<InstallProgress> => ipcRenderer.invoke('comfy-install', id),
   comfyUninstall: (name: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('comfy-uninstall', name),
   comfyImage: (checkpoint: string, prompt: string, width: number, height: number): Promise<ComfyImageResult> =>
@@ -74,6 +75,9 @@ const api = {
   musicInstall: (id: string): Promise<InstallProgress> => ipcRenderer.invoke('music-install', id),
   musicUninstall: (name: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('music-uninstall', name),
   musicStatus: (): Promise<MusicStatus> => ipcRenderer.invoke('music-status'),
+  musicStart: (): Promise<{ available: boolean; started?: boolean; error?: string }> => ipcRenderer.invoke('music-start'),
+  extractAudio: (inPath: string, opts?: { start?: number; duration?: number; name?: string }): Promise<{ ok?: boolean; outPath?: string; cancelled?: boolean; error?: string }> =>
+    ipcRenderer.invoke('extract-audio', inPath, opts),
   musicGenerate: (prompt: string, seconds: number, modelId: string): Promise<{ ok: boolean; base64?: string; error?: string }> => ipcRenderer.invoke('music-generate', prompt, seconds, modelId),
   onMusicInstallProgress: (cb: (p: InstallProgress) => void): (() => void) => {
     const listener = (_e: Electron.IpcRendererEvent, p: InstallProgress): void => cb(p)
@@ -88,7 +92,14 @@ const api = {
 
   projectLoad: (): Promise<SavedProject | null> => ipcRenderer.invoke('project-load'),
   projectSave: (data: SavedProject): Promise<void> => ipcRenderer.invoke('project-save', data),
-  projectClear: (): Promise<void> => ipcRenderer.invoke('project-clear')
+  projectClear: (): Promise<void> => ipcRenderer.invoke('project-clear'),
+
+  aiSetupGet: (): Promise<{ mode: string; comfy: boolean; music: boolean; ollama: boolean; completed: boolean; updatedAt: number }> =>
+    ipcRenderer.invoke('ai-setup-get'),
+  aiSetupSet: (patch: { mode?: string; comfy?: boolean; music?: boolean; ollama?: boolean; completed?: boolean }): Promise<{ mode: string; comfy: boolean; music: boolean; ollama: boolean; completed: boolean; updatedAt: number }> =>
+    ipcRenderer.invoke('ai-setup-set', patch),
+  aiSetupSummary: (): Promise<{ setup: { mode: string; comfy: boolean; music: boolean; ollama: boolean; completed: boolean }; bundled: { checkpoints: { name: string; size: number }[]; hasBundled: boolean } }> =>
+    ipcRenderer.invoke('ai-setup-summary')
 }
 
 export type Api = typeof api

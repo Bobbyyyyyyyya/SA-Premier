@@ -11,6 +11,9 @@ function formatMb(mb: number): string {
 export default function AiPanel(): JSX.Element {
   const [comfy, setComfy] = useState<ComfyStatus>({ available: false })
   const [musicStatus, setMusicStatus] = useState<MusicStatus>({ available: false })
+  const [ollama, setOllama] = useState<{ available: boolean; version?: string }>({ available: false })
+  const [starting, setStarting] = useState<{ ollama?: boolean; comfy?: boolean; music?: boolean }>({})
+  const [startError, setStartError] = useState<{ ollama?: string; comfy?: string; music?: string }>({})
   const [installed, setInstalled] = useState<InstalledModel[]>([])
   const [catalog, setCatalog] = useState<CatalogModel[]>([])
   const [selected, setSelected] = useState('')
@@ -35,27 +38,111 @@ export default function AiPanel(): JSX.Element {
   const [beatResult, setBeatResult] = useState<{ ok: boolean; name?: string; base64?: string; error?: string } | null>(null)
   const [beatBusy, setBeatBusy] = useState(false)
   const [musicProgress, setMusicProgress] = useState<AiMusicProgress | null>(null)
+  const [setupMode, setSetupMode] = useState('ondemand')
 
   const refreshComfy = useCallback(async (): Promise<void> => {
-    const st = await window.api.comfyStatus()
-    setComfy(st)
-    const mst = await window.api.musicStatus()
-    setMusicStatus(mst)
-    const list = await window.api.comfyModels()
-    setInstalled(list)
-    setCatalog(await window.api.comfyCatalog())
-    setSelected((cur) => (cur && list.some((m) => m.name === cur) ? cur : list[0]?.name ?? ''))
-    const mList = await window.api.musicModels()
-    setMusicInstalled(mList)
-    setMusicCatalog(await window.api.musicCatalog())
-    setSelectedMusic((cur) => (cur && mList.some((m) => m.name === cur) ? cur : mList[0]?.name ?? ''))
+    try {
+      const [st, mst, ost] = await Promise.all([
+        window.api.comfyStatus(),
+        window.api.musicStatus(),
+        window.api.aiPing()
+      ])
+      setComfy(st)
+      setMusicStatus(mst)
+      setOllama(ost)
+    } catch {
+      // ignore
+    }
+    try {
+      const list = await window.api.comfyModels()
+      setInstalled(list)
+      setCatalog(await window.api.comfyCatalog())
+      setSelected((cur) => (cur && list.some((m) => m.name === cur) ? cur : list[0]?.name ?? ''))
+    } catch { /* ignore */ }
+    try {
+      const mList = await window.api.musicModels()
+      setMusicInstalled(mList)
+      setMusicCatalog(await window.api.musicCatalog())
+      setSelectedMusic((cur) => (cur && mList.some((m) => m.name === cur) ? cur : mList[0]?.name ?? ''))
+    } catch { /* ignore */ }
   }, [])
+
+  const autoStartAll = useCallback(async (): Promise<void> => {
+    // automatisch opstarten bij openen van het paneel (alleen als nog niet online)
+    const st = await window.api.comfyStatus().catch(() => ({ available: false }) as ComfyStatus)
+    const mst = await window.api.musicStatus().catch(() => ({ available: false }) as MusicStatus)
+    const ost = await window.api.aiPing().catch(() => ({ available: false }))
+    setComfy(st); setMusicStatus(mst); setOllama(ost)
+    if (!ost.available) {
+      setStarting((p) => ({ ...p, ollama: true }))
+      window.api.aiStart().then((r) => {
+        setStarting((p) => ({ ...p, ollama: false }))
+        if (!r.available) setStartError((p) => ({ ...p, ollama: r.error }))
+        else setStartError((p) => ({ ...p, ollama: undefined }))
+        void refreshComfy()
+      }).catch(() => setStarting((p) => ({ ...p, ollama: false })))
+    }
+    if (!st.available) {
+      setStarting((p) => ({ ...p, comfy: true }))
+      window.api.comfyStart().then((r) => {
+        setStarting((p) => ({ ...p, comfy: false }))
+        if (!r.available) setStartError((p) => ({ ...p, comfy: r.error }))
+        else setStartError((p) => ({ ...p, comfy: undefined }))
+        void refreshComfy()
+      }).catch(() => setStarting((p) => ({ ...p, comfy: false })))
+    }
+    if (!mst.available) {
+      setStarting((p) => ({ ...p, music: true }))
+      window.api.musicStart().then((r) => {
+        setStarting((p) => ({ ...p, music: false }))
+        if (!r.available) setStartError((p) => ({ ...p, music: r.error }))
+        else setStartError((p) => ({ ...p, music: undefined }))
+        void refreshComfy()
+      }).catch(() => setStarting((p) => ({ ...p, music: false })))
+    }
+  }, [refreshComfy])
+
+  const startOne = async (which: 'ollama' | 'comfy' | 'music'): Promise<void> => {
+    setStarting((p) => ({ ...p, [which]: true }))
+    setStartError((p) => ({ ...p, [which]: undefined }))
+    try {
+      const r = which === 'ollama' ? await window.api.aiStart()
+        : which === 'comfy' ? await window.api.comfyStart()
+        : await window.api.musicStart()
+      if (!r.available) setStartError((p) => ({ ...p, [which]: r.error ?? 'Starten mislukt.' }))
+    } catch (e) {
+      setStartError((p) => ({ ...p, [which]: (e as Error).message }))
+    } finally {
+      setStarting((p) => ({ ...p, [which]: false }))
+      void refreshComfy()
+    }
+  }
 
   useEffect(() => {
     void refreshComfy()
-    const t = setInterval(() => void refreshComfy(), 10000)
-    return () => clearInterval(t)
-  }, [refreshComfy])
+    void autoStartAll()
+    window.api.aiSetupGet().then((s) => setSetupMode(s.mode)).catch(() => null)
+    const onSetupChanged = (): void => {
+      window.api.aiSetupGet().then((s) => setSetupMode(s.mode)).catch(() => null)
+      void refreshComfy()
+      void autoStartAll()
+    }
+    window.addEventListener('ai-setup-changed', onSetupChanged)
+    // snel pollen tot alles online is, daarna rustig
+    let ticks = 0
+    const t = setInterval(() => {
+      ticks += 1
+      void refreshComfy()
+      if (ticks > 20) {
+        clearInterval(t)
+        setInterval(() => void refreshComfy(), 10000)
+      }
+    }, 3000)
+    return () => {
+      clearInterval(t)
+      window.removeEventListener('ai-setup-changed', onSetupChanged)
+    }
+  }, [refreshComfy, autoStartAll])
 
   useEffect(() => {
     const off = window.api.onComfyInstallProgress((p) => {
@@ -155,32 +242,56 @@ export default function AiPanel(): JSX.Element {
 
   return (
     <div className="ai-panel">
+      <div className="ai-status" style={{ justifyContent: 'space-between' }}>
+        <span>
+          AI-pakket: <b>{setupMode === 'full' ? '📦 Volledig (meegeleverd)' : setupMode === 'custom' ? '🛠️ Aangepast' : '☁️ Licht (download bij gebruik)'}</b>
+        </span>
+        <button onClick={() => window.dispatchEvent(new Event('open-ai-setup'))} title="Wijzig of AI meegeleverd of gedownload wordt">
+          Wijzig…
+        </button>
+      </div>
       <div className="ai-status">
-        <span className={`dot ${comfy.available ? 'ok' : 'bad'}`} />
+        <span className={`dot ${ollama.available ? 'ok' : starting.ollama ? 'wait' : 'bad'}`} />
+        <span>
+          {ollama.available
+            ? `Ollama ready${ollama.version ? ' · v' + ollama.version : ''}`
+            : starting.ollama ? 'Ollama starten… (auto)' : 'Ollama niet actief'}
+        </span>
+        {!ollama.available && (
+          <button onClick={() => startOne('ollama')} disabled={starting.ollama} style={{ marginLeft: 'auto' }}>
+            {starting.ollama ? '…' : 'Start'}
+          </button>
+        )}
+      </div>
+      {startError.ollama && <div className="ai-error" style={{ padding: '4px 10px' }}>{startError.ollama}</div>}
+      <div className="ai-status">
+        <span className={`dot ${comfy.available ? 'ok' : starting.comfy ? 'wait' : 'bad'}`} />
         <span>
           {comfy.available
             ? `ComfyUI ready${comfy.device ? ' · ' + comfy.device : ''} (${comfy.deviceType ?? ''})`
-            : 'ComfyUI engine not running'}
+            : starting.comfy ? 'ComfyUI starten… (auto, kan 30–60s duren)' : 'ComfyUI engine niet actief (auto-start aan)'}
         </span>
         {!comfy.available && (
-          <button onClick={() => window.api.comfyStart()} style={{ marginLeft: 'auto' }}>
-            Start
+          <button onClick={() => startOne('comfy')} disabled={starting.comfy} style={{ marginLeft: 'auto' }}>
+            {starting.comfy ? '…' : 'Start'}
           </button>
         )}
       </div>
+      {startError.comfy && <div className="ai-error" style={{ padding: '4px 10px' }}>{startError.comfy}</div>}
       <div className="ai-status music-status">
-        <span className={`dot ${musicStatus.available ? 'ok' : 'bad'}`} />
+        <span className={`dot ${musicStatus.available ? 'ok' : starting.music ? 'wait' : 'bad'}`} />
         <span>
           {musicStatus.available
             ? `MusicGen ready${musicStatus.device ? ' · ' + musicStatus.device : ''} (local AI)`
-            : 'MusicGen server not running — start to use real AI beat'}
+            : starting.music ? 'MusicGen starten… (auto)' : 'MusicGen niet actief — synth fallback aan'}
         </span>
         {!musicStatus.available && (
-          <button onClick={() => window.api.comfyStart()} style={{ marginLeft: 'auto' }}>
-            Start
+          <button onClick={() => startOne('music')} disabled={starting.music} style={{ marginLeft: 'auto' }}>
+            {starting.music ? '…' : 'Start'}
           </button>
         )}
       </div>
+      {startError.music && <div className="ai-error" style={{ padding: '4px 10px' }}>{startError.music}</div>}
 
       {/* Models Overview */}
       <div className="inspector-section models-overview">

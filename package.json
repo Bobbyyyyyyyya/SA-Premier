@@ -9,7 +9,9 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "start": "electron-vite preview",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "dist:lite": "npm run build && electron-builder --config electron-builder.yml -mwl --publish never",
+    "dist:full": "npm run build && electron-builder --config electron-builder.full.yml -mwl --publish never"
   },
   "devDependencies": {
     "@types/fluent-ffmpeg": "^2.1.27",

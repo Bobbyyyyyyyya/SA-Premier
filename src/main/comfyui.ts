@@ -42,6 +42,18 @@ function installedDir(): string {
   return path.join(comfyDir, 'models', 'checkpoints')
 }
 
+/** Meegeleverde checkpoints (Full-build) — worden samengevoegd met gedownloade. */
+function bundledCheckpoints(): { name: string; size: number; path: string }[] {
+  try {
+    // lazy require om circulaire imports te vermijden
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const setup = require('./ai-setup') as typeof import('./ai-setup')
+    return setup.listBundledCheckpoints()
+  } catch {
+    return []
+  }
+}
+
 export async function comfyStatus(): Promise<ComfyStatus> {
   try {
     const res = await comfyFetch('/system_stats', { signal: AbortSignal.timeout(4000) })
@@ -69,20 +81,54 @@ export function comfyDirExists(): boolean {
   return fs.existsSync(comfyDir)
 }
 
-export function ensureComfyUI(): void {
-  void (async () => {
-    const st = await comfyStatus()
-    if (st.available) return
-
-    killZombieOnPort(PORT)
-    await new Promise((r) => setTimeout(r, 500))
-
-    if (!fs.existsSync(comfyDir)) {
-      console.log('[comfy] ComfyUI not installed at', comfyDir)
-      return
+async function waitForComfyReady(timeoutMs = 60000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    try {
+      const st = await comfyStatus()
+      if (st.available) return true
+    } catch {
+      // ignore
     }
-    const bin = pythonBin()
+    await new Promise((r) => setTimeout(r, 1500))
+  }
+  return false
+}
+
+/** Start ComfyUI automatisch en wacht tot hij bereikbaar is. */
+export async function ensureComfyUIAsync(waitMs = 60000): Promise<{ available: boolean; started?: boolean; error?: string }> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const setup = require('./ai-setup') as typeof import('./ai-setup')
+    if (!setup.shouldAutostart('comfy')) {
+      return { available: false, error: 'ComfyUI is uitgeschakeld in AI-setup (wizard). Zet hem daar weer aan.' }
+    }
+  } catch {
+    // ignore
+  }
+  const st = await comfyStatus()
+  if (st.available) return { available: true, started: false }
+
+  if (process.platform === 'win32') {
+    killZombieOnPort(PORT)
+  } else {
+    killZombieOnPort(PORT)
+  }
+  await new Promise((r) => setTimeout(r, 500))
+
+  if (!fs.existsSync(comfyDir)) {
+    return { available: false, error: `ComfyUI niet gevonden in ${comfyDir}. Installeer ComfyUI of zet het daar neer.` }
+  }
+  const bin = pythonBin()
+  try {
+    if (!fs.existsSync(bin) && bin !== 'python' && bin !== 'python3') {
+      return { available: false, error: `Python venv niet gevonden (${bin}). Maak ~/ComfyUI/venv aan.` }
+    }
     console.log('[comfy] starting server:', bin)
+    if (server) {
+      try { server.kill() } catch { /* ignore */ }
+      server = null
+    }
     server = spawn(bin, ['main.py', '--port', String(PORT), '--preview-method', 'none'], {
       cwd: comfyDir,
       stdio: 'ignore',
@@ -98,7 +144,15 @@ export function ensureComfyUI(): void {
       console.error('[comfy] failed to start:', e.message)
       server = null
     })
-  })()
+  } catch (e) {
+    return { available: false, error: (e as Error).message }
+  }
+  const ok = await waitForComfyReady(waitMs)
+  return ok ? { available: true, started: true } : { available: false, error: 'ComfyUI start, maar reageert niet (timeout 60s). Check ~/ComfyUI log.' }
+}
+
+export function ensureComfyUI(): void {
+  void ensureComfyUIAsync()
 }
 
 export function stopComfyUI(): void {
@@ -109,27 +163,40 @@ export function stopComfyUI(): void {
 }
 
 export async function listCheckpoints(): Promise<InstalledModel[]> {
+  const bundled = bundledCheckpoints()
   try {
     const res = await comfyFetch('/object_info/CheckpointLoaderSimple', {
       signal: AbortSignal.timeout(6000)
     })
-    if (!res.ok) return []
+    if (!res.ok) return bundled.map((b) => ({ name: b.name, size: b.size, path: b.path }))
     const data = (await res.json()) as {
       CheckpointLoaderSimple?: { input?: { required?: { ckpt_name?: [string[]] } } }
     }
     const names: string[] = data.CheckpointLoaderSimple?.input?.required?.ckpt_name?.[0] ?? []
     const dir = installedDir()
-    return names.map((name) => {
+    const live = names.map((name) => {
       let size = 0
+      let p = path.join(dir, name)
       try {
-        size = fs.statSync(path.join(dir, name)).size
+        size = fs.statSync(p).size
       } catch {
-        size = 0
+        const b = bundled.find((x) => x.name === name)
+        if (b) {
+          size = b.size
+          p = b.path
+        } else {
+          size = 0
+        }
       }
-      return { name, size, path: path.join(dir, name) }
+      return { name, size, path: p }
     })
+    // voeg meegeleverde toe die de server (nog) niet kent
+    for (const b of bundled) {
+      if (!live.some((l) => l.name === b.name)) live.push({ name: b.name, size: b.size, path: b.path })
+    }
+    return live
   } catch {
-    return []
+    return bundled.map((b) => ({ name: b.name, size: b.size, path: b.path }))
   }
 }
 

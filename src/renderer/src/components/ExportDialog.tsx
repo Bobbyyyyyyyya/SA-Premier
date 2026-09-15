@@ -9,12 +9,26 @@ const FORMATS = [
   { label: '360p · 640x360', w: 640, h: 360 }
 ]
 
+const FPS_OPTIONS = [
+  { label: '23.976 fps (film NTSC)', value: 23.976 },
+  { label: '24 fps (film)', value: 24 },
+  { label: '25 fps (PAL)', value: 25 },
+  { label: '29.97 fps (NTSC)', value: 29.97 },
+  { label: '30 fps (standaard)', value: 30 },
+  { label: '48 fps', value: 48 },
+  { label: '50 fps (PAL high)', value: 50 },
+  { label: '59.94 fps (NTSC high)', value: 59.94 },
+  { label: '60 fps (smooth)', value: 60 },
+  { label: '120 fps (slow-mo)', value: 120 }
+]
+
 export default function ExportDialog({ open, onClose }: { open: boolean; onClose: () => void }): JSX.Element | null {
   const project = useEditorStore((s) => s.project)
   const assets = useEditorStore((s) => s.assets)
   const total = useEditorStore(selectTotal)
   const [fmtIdx, setFmtIdx] = useState(1)
   const [fps, setFps] = useState(30)
+  const [customFps, setCustomFps] = useState('')
   const [progress, setProgress] = useState<ExportProgress | null>(null)
   const [outPath, setOutPath] = useState('')
 
@@ -22,6 +36,9 @@ export default function ExportDialog({ open, onClose }: { open: boolean; onClose
     if (!open) return
     setProgress(null)
     setOutPath('')
+    // start met project-fps als die in de lijst staat
+    const p = useEditorStore.getState().project.fps
+    if (FPS_OPTIONS.some((o) => Math.abs(o.value - p) < 0.001)) setFps(p)
     return window.api.onExportProgress((p) => {
       setProgress(p)
       if (p.outPath) setOutPath(p.outPath)
@@ -39,10 +56,12 @@ export default function ExportDialog({ open, onClose }: { open: boolean; onClose
   if (!open) return null
 
   const fmt = FORMATS[fmtIdx]
+  const effFps = customFps.trim() ? Number(customFps.replace(',', '.')) : fps
+  const fpsValid = Number.isFinite(effFps) && effFps >= 1 && effFps <= 240
 
   const start = async (): Promise<void> => {
     const state = useEditorStore.getState()
-    if (!state.clips.length) return
+    if (!state.clips.length || !fpsValid) return
     const req: ExportRequest = {
       project: {
         name: state.project.name,
@@ -56,7 +75,7 @@ export default function ExportDialog({ open, onClose }: { open: boolean; onClose
       outPath: '',
       width: fmt.w,
       height: fmt.h,
-      fps
+      fps: effFps
     }
     setProgress({ phase: 'progress', percent: 0 })
     const res = await window.api.exportVideo(req)
@@ -98,19 +117,33 @@ export default function ExportDialog({ open, onClose }: { open: boolean; onClose
             </div>
             <div className="field">
               <label>Frame rate</label>
-              <select value={fps} onChange={(e) => setFps(+e.target.value)}>
-                <option value={24}>24 fps</option>
-                <option value={30}>30 fps</option>
-                <option value={60}>60 fps</option>
+              <select value={fps} onChange={(e) => { setFps(+e.target.value); setCustomFps('') }}>
+                {FPS_OPTIONS.map((f) => (
+                  <option key={f.label} value={f.value}>
+                    {f.label}
+                  </option>
+                ))}
               </select>
             </div>
+            <div className="field">
+              <label>Custom fps (1–240, bv. 23.976)</label>
+              <input
+                value={customFps}
+                onChange={(e) => setCustomFps(e.target.value.replace(/[^0-9.,]/g, ''))}
+                placeholder={`Standaard: ${fps}`}
+              />
+              {customFps.trim() && !fpsValid && (
+                <div className="error-text">Vul een geldige fps in tussen 1 en 240.</div>
+              )}
+            </div>
             <div className="progress-note">
-              Timeline length: {total.toFixed(1)}s · {assets.length} media items · {total > 0 ? 'ready to render' : 'no clips'}
+              Timeline: {total.toFixed(1)}s · {assets.length} media · {fmt.w}x{fmt.h} @ {fpsValid ? effFps : '—'} fps
+              {total > 0 ? ' · klaar' : ' · geen clips'}
             </div>
             <div className="modal-actions">
               <div className="spacer" />
               <button onClick={onClose}>Close</button>
-              <button className="primary" onClick={start} disabled={!assets.length}>
+              <button className="primary" onClick={start} disabled={!assets.length || !fpsValid}>
                 Export MP4
               </button>
             </div>

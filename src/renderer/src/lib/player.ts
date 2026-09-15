@@ -7,12 +7,40 @@ export type PlayerElement = HTMLMediaElement | HTMLImageElement
 export class PlayerManager {
   private els = new Map<string, PlayerElement>()
   private container: HTMLDivElement
+  private masterVolume = 1
+  private masterMuted = false
 
   constructor() {
     this.container = document.createElement('div')
     this.container.style.cssText =
       'position:fixed;left:-100000px;top:0;width:16px;height:16px;overflow:hidden;pointer-events:none;'
     document.body.appendChild(this.container)
+  }
+
+  setMaster(volume: number, muted: boolean): void {
+    this.masterVolume = clamp(volume, 0, 1)
+    this.masterMuted = muted
+    // pas direct toe op alle bestaande elementen
+    for (const el of this.els.values()) {
+      if (el instanceof HTMLMediaElement) {
+        const base = (el as HTMLMediaElement & { _clipVol?: number })._clipVol ?? 1
+        this.applyVolume(el, base, (el as HTMLMediaElement & { _trackMuted?: boolean })._trackMuted ?? false)
+      }
+    }
+  }
+
+  getMaster(): { volume: number; muted: boolean } {
+    return { volume: this.masterVolume, muted: this.masterMuted }
+  }
+
+  private applyVolume(el: HTMLMediaElement, clipVolume: number, trackMuted: boolean): void {
+    const effClip = clamp(clipVolume, 0, 2)
+    // HTMLMediaElement.volume gaat maar tot 1 — alles daarboven is gain bij export
+    const previewVol = clamp(effClip, 0, 1) * this.masterVolume
+    ;(el as HTMLMediaElement & { _clipVol?: number })._clipVol = clipVolume
+    ;(el as HTMLMediaElement & { _trackMuted?: boolean })._trackMuted = trackMuted
+    el.volume = clamp(previewVol, 0, 1)
+    el.muted = trackMuted || this.masterMuted || effClip <= 0.001
   }
 
   element(clipId: string, asset: Asset, kind?: string): PlayerElement {
@@ -24,7 +52,7 @@ export class PlayerManager {
         a.preload = 'auto'
         // no crossOrigin for local media:// — avoids CORS preflight
         // @ts-ignore
-        a.volume = 1
+        a.volume = this.masterVolume
         a.src = mediaUrl(asset.path)
         el = a
       } else if (asset.isImage) {
@@ -35,7 +63,7 @@ export class PlayerManager {
         const v = document.createElement('video')
         v.preload = 'auto'
         v.playsInline = true
-        v.volume = 1
+        v.volume = this.masterVolume
         // don't force muted here — let syncPlayback decide
         // @ts-ignore playsInline attribute for safari
         v.setAttribute('playsinline', '')
@@ -45,6 +73,17 @@ export class PlayerManager {
       }
       this.container.appendChild(el as Node)
       this.els.set(clipId, el)
+    } else if (el instanceof HTMLMediaElement) {
+      // als het asset-pad veranderde (clip hergebruikt), src verversen
+      const want = mediaUrl(asset.path)
+      const cur = (el as HTMLAudioElement).currentSrc || (el as HTMLMediaElement).src
+      if (cur !== want && !cur.endsWith(encodeURI(asset.path))) {
+        try {
+          ;(el as HTMLMediaElement).src = want
+        } catch {
+          // ignore
+        }
+      }
     }
     return el
   }
@@ -63,11 +102,12 @@ export class PlayerManager {
     sourceStart: number,
     trackMuted: boolean,
     time: number,
-    playing: boolean
+    playing: boolean,
+    clipVolume = 1
   ): void {
     const el = this.els.get(clipId)
     if (!el || !(el instanceof HTMLMediaElement)) return
-    el.muted = trackMuted
+    this.applyVolume(el, clipVolume, trackMuted)
     const expected = this.expectedTime(clipStart, clipDur, sourceStart, time)
     if (playing && expected !== null) {
       if (Math.abs(el.currentTime - expected) > 0.4) {
@@ -90,10 +130,16 @@ export class PlayerManager {
     clipStart: number,
     clipDur: number,
     sourceStart: number,
-    time: number
+    time: number,
+    clipVolume?: number,
+    trackMuted?: boolean
   ): void {
     const el = this.els.get(clipId)
     if (!el || !(el instanceof HTMLMediaElement)) return
+    if (clipVolume !== undefined || trackMuted !== undefined) {
+      const prev = el as HTMLMediaElement & { _clipVol?: number; _trackMuted?: boolean }
+      this.applyVolume(el, clipVolume ?? prev._clipVol ?? 1, trackMuted ?? prev._trackMuted ?? false)
+    }
     const expected = this.expectedTime(clipStart, clipDur, sourceStart, time)
     if (expected === null) {
       if (!el.paused) el.pause()
@@ -111,6 +157,18 @@ export class PlayerManager {
   pauseAll(): void {
     for (const el of this.els.values()) {
       if (el instanceof HTMLMediaElement && !el.paused) el.pause()
+    }
+  }
+
+  removeClip(clipId: string): void {
+    const el = this.els.get(clipId)
+    if (el) {
+      if (el instanceof HTMLMediaElement) {
+        try { el.pause() } catch { /* ignore */ }
+        try { el.removeAttribute('src') } catch { /* ignore */ }
+      }
+      try { (el as unknown as HTMLElement).remove() } catch { /* ignore */ }
+      this.els.delete(clipId)
     }
   }
 

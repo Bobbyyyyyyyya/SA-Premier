@@ -6,6 +6,7 @@ import Inspector from './components/Inspector'
 import Timeline from './components/Timeline'
 import ExportDialog from './components/ExportDialog'
 import HomeScreen from './components/HomeScreen'
+import SetupWizard from './components/SetupWizard'
 import { useEditorStore } from './store'
 import { importPaths } from './lib/inspect'
 
@@ -13,6 +14,17 @@ export default function App(): JSX.Element {
   const [view, setView] = useState<'home' | 'editor'>('home')
   const [exportOpen, setExportOpen] = useState(false)
   const [dragging, setDragging] = useState(false)
+  const [setupOpen, setSetupOpen] = useState(false)
+
+  // AI-setup wizard: toon bij eerste start, en via event vanuit Home/AI-paneel
+  useEffect(() => {
+    window.api.aiSetupGet().then((s) => {
+      if (!s.completed) setSetupOpen(true)
+    }).catch(() => null)
+    const open = (): void => setSetupOpen(true)
+    window.addEventListener('open-ai-setup', open)
+    return () => window.removeEventListener('open-ai-setup', open)
+  }, [])
 
   useEffect(() => {
     let depth = 0
@@ -67,11 +79,30 @@ export default function App(): JSX.Element {
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
       const s = useEditorStore.getState()
 
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+        e.preventDefault()
+        if (s.selectedClipId) s.duplicateClip(s.selectedClipId)
+        return
+      }
       if (e.code === 'Space') {
         e.preventDefault()
         s.setPlaying(!s.playing)
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         if (s.selectedClipId) s.removeClip(s.selectedClipId)
+      } else if (e.key.toLowerCase() === 's' && !e.ctrlKey && !e.metaKey) {
+        if (s.selectedClipId) {
+          e.preventDefault()
+          s.splitClip(s.selectedClipId)
+        }
+      } else if (e.key === 'Home') {
+        e.preventDefault()
+        s.seekTo(0)
+      } else if (e.key === 'End') {
+        e.preventDefault()
+        const total = s.clips.reduce((m, c) => Math.max(m, c.start + c.duration), 0)
+        s.seekTo(total)
+      } else if (e.key === 'Escape') {
+        s.selectClip(null)
       } else if (e.key === 'ArrowLeft') {
         if (e.shiftKey && s.selectedClipId) {
           const c = s.clips.find((x) => x.id === s.selectedClipId)
@@ -103,6 +134,7 @@ export default function App(): JSX.Element {
             setView('editor')
           }}
         />
+        <SetupWizard open={setupOpen} onClose={() => setSetupOpen(false)} />
       </div>
     )
   }
@@ -117,6 +149,7 @@ export default function App(): JSX.Element {
       </div>
       <Timeline />
       <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} />
+      <SetupWizard open={setupOpen} onClose={() => setSetupOpen(false)} />
       {dragging && <div className="drop-overlay">Drop to import media</div>}
     </div>
   )

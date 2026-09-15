@@ -1,0 +1,69 @@
+# SA Premier — AI-modellen: downloaden vs meeleveren
+#
+# Twee smaken voor users die de app downloaden:
+#
+#   LITE (aanbevolen, ~150 MB installer) — deze file
+#     - Geen AI-modellen in de installer. App werkt ALTIJD:
+#       monteren/editen/exporteren thumbnails alles lokaal via ffmpeg.
+#     - Bij eerste start kiest de user in de AI-setup wizard voor
+#       "Licht — download bij gebruik".
+#     - ComfyUI / MusicGen / Ollama starten automatisch; modellen worden
+#       pas gedownload als ze echt gebruikt worden (met voortgangsbalk
+#       in het AI-paneel). Zonder servers valt Music terug op synth,
+#       foto-AI toont een nette fout + downloadknop — nooit een crash.
+#     - Bouwen:  npm run dist:lite
+#
+#   FULL (offline, ~8–15 GB installer) — zie electron-builder.full.yml
+#
+# De user kan altijd wisselen: Home → 🤖 AI-setup, of AI-paneel → Wijzig…
+# Keuze wordt bewaard in <userData>/ai-setup.json:
+#   { mode: ondemand|full|custom, comfy, music, ollama, completed }
+# Uitgeschakelde engines starten niet automatisch op.
+
+appId: com.sapremier.app
+productName: SA Premier
+directories:
+  output: dist
+files:
+  - out/**/*
+  - package.json
+  # runtime-deps die main nodig heeft (de rest komt via dependencies mee)
+  - node_modules/ffmpeg-static/**/*
+  - node_modules/fluent-ffmpeg/**/*
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.*'
+  - '!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,test,tests,__tests__,docs}'
+extraMetadata:
+  version: 0.1.0
+
+# ffmpeg-binary kan niet vanuit asar draaien → altijd uitpakken.
+# Plus kopie als extraResources/bin/ffmpeg als fallback (export.ts kijkt daar ook).
+asarUnpack:
+  - 'node_modules/ffmpeg-static/**/*'
+extraResources:
+  # fallback-kopie: komt terecht op <resources>/bin/ffmpeg (export.ts kijkt daar ook)
+  - from: node_modules/ffmpeg-static
+    to: bin
+    filter:
+      - ffmpeg
+      - ffmpeg.exe
+
+mac:
+  category: public.app-category.video
+  target:
+    - dmg
+    - zip
+win:
+  target:
+    - nsis
+    - portable
+linux:
+  target:
+    - AppImage
+    - deb
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  uninstallDisplayName: SA Premier

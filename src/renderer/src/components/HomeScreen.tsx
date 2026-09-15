@@ -42,6 +42,13 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
           }}>
             Import media
           </button>
+          <button
+            className="ghost"
+            title="Kies of AI-modellen gedownload worden of meegeleverd zijn"
+            onClick={() => window.dispatchEvent(new Event('open-ai-setup'))}
+          >
+            🤖 AI-setup
+          </button>
         </div>
       </div>
 

@@ -2,14 +2,15 @@ import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from 'elect
 import { execFile } from 'node:child_process'
 import path from 'node:path'
 import fs from 'node:fs'
-import ffmpegPath from 'ffmpeg-static'
-import { cancelExport, startExport } from './export'
+import { cancelExport, extractAudioToFile, ffmpegBin, startExport } from './export'
 import * as ai from './ai'
 import * as comfy from './comfyui'
 import * as musicAi from './music-ai'
 import * as project from './project'
+import * as aiSetup from './ai-setup'
 import { addRecent, clearRecents, loadRecents } from './recents'
 import type { ExportRequest, RecentMediaItem, SavedProject } from '../shared/types'
+import type { AiSetup } from './ai-setup'
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -82,8 +83,8 @@ function registerIpc(): void {
 
   ipcMain.handle('generate-thumbnail', (_e, p: string) =>
     new Promise<string | null>((resolve) => {
-      if (!ffmpegPath) return resolve(null)
-      const bin = ffmpegPath
+      const bin = ffmpegBin()
+      if (!bin) return resolve(null)
       const run = (seek: boolean): void => {
         const args = ['-loglevel', 'error']
         if (seek) args.push('-ss', '0.3')
@@ -104,8 +105,8 @@ function registerIpc(): void {
 
   ipcMain.handle('get-media-duration', (_e, p: string) =>
     new Promise<number | null>((resolve) => {
-      if (!ffmpegPath) return resolve(null)
-      const bin = ffmpegPath as string
+      const bin = ffmpegBin()
+      if (!bin) return resolve(null)
       execFile(bin, ['-i', p], { timeout: 10000 }, (_err, _stdout, stderr) => {
         const out = String(stderr || _stdout || '')
         const m = out.match(/Duration:\s*(\d+):(\d+):(\d+)\.(\d+)/)
@@ -123,6 +124,7 @@ function registerIpc(): void {
   )
 
   ipcMain.handle('ai-ping', () => ai.pingOllama())
+  ipcMain.handle('ai-start', () => ai.ensureOllama())
   ipcMain.handle('ai-models', () => ai.listModels())
   ipcMain.handle('ai-text', (_e, model: string, prompt: string) => ai.generateText(model, prompt))
   ipcMain.handle('ai-beat', async (event, seconds: number, bpm: number, prompt?: string, modelId?: string) => {
@@ -202,7 +204,7 @@ function registerIpc(): void {
   ipcMain.handle('comfy-models', () => comfy.listCheckpoints())
   ipcMain.handle('comfy-catalog', () => comfy.CATALOG)
   ipcMain.handle('comfy-installed-dir', () => comfy.comfyDirExists())
-  ipcMain.handle('comfy-start', () => comfy.ensureComfyUI())
+  ipcMain.handle('comfy-start', () => comfy.ensureComfyUIAsync())
   ipcMain.handle('comfy-install', (event, id: string) => {
     const item = comfy.CATALOG.find((m) => m.id === id)
     if (!item) return { id, phase: 'error', message: 'Unknown model' }
@@ -219,6 +221,9 @@ function registerIpc(): void {
 
   ipcMain.handle('music-catalog', () => musicAi.MUSIC_CATALOG)
   ipcMain.handle('music-models', () => musicAi.listMusicModels())
+  ipcMain.handle('music-status', () => musicAi.musicStatus())
+  ipcMain.handle('music-start', () => musicAi.ensureMusicAIAsync())
+  ipcMain.handle('music-generate', (_e, prompt: string, seconds: number, modelId: string) => musicAi.generateMusic(prompt, seconds, modelId))
   ipcMain.handle('music-install', (event, id: string) => {
     const item = musicAi.MUSIC_CATALOG.find((m) => m.id === id)
     if (!item) return { id, phase: 'error', message: 'Unknown model' }
@@ -227,12 +232,34 @@ function registerIpc(): void {
     })
   })
   ipcMain.handle('music-uninstall', (_e, name: string) => musicAi.uninstallMusicModel(name))
-  ipcMain.handle('music-status', () => musicAi.musicStatus())
-  ipcMain.handle('music-generate', (_e, prompt: string, seconds: number, modelId: string) => musicAi.generateMusic(prompt, seconds, modelId))
+
+  ipcMain.handle('extract-audio', async (event, inPath: string, opts?: { start?: number; duration?: number; name?: string }) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const base = (opts?.name || 'audio').replace(/\.[a-z0-9]+$/i, '')
+    const res = await dialog.showSaveDialog(win!, {
+      defaultPath: `${base}.wav`,
+      filters: [
+        { name: 'WAV Audio', extensions: ['wav'] },
+        { name: 'MP3 Audio', extensions: ['mp3'] },
+        { name: 'M4A Audio', extensions: ['m4a'] }
+      ]
+    })
+    if (res.canceled || !res.filePath) return { cancelled: true }
+    try {
+      const r = await extractAudioToFile(inPath, res.filePath, opts)
+      return { ok: true, outPath: r.outPath }
+    } catch (err) {
+      return { ok: false, error: (err as Error).message }
+    }
+  })
 
   ipcMain.handle('project-load', () => project.loadProject())
   ipcMain.handle('project-save', (_e, data: SavedProject) => project.saveProject(data))
   ipcMain.handle('project-clear', () => project.clearProject())
+
+  ipcMain.handle('ai-setup-get', () => aiSetup.getAiSetup())
+  ipcMain.handle('ai-setup-set', (_e, patch: Partial<AiSetup>) => aiSetup.setAiSetup(patch))
+  ipcMain.handle('ai-setup-summary', () => aiSetup.aiSetupSummary())
 }
 
 app.whenReady().then(() => {
@@ -269,8 +296,22 @@ app.whenReady().then(() => {
   })
 
   registerIpc()
-  comfy.ensureComfyUI()
-  musicAi.ensureMusicAI()
+  // Alles automatisch opstarten op de achtergrond (niet blokkerend)
+  void ai.ensureOllama().catch(() => null)
+  void comfy.ensureComfyUIAsync(30000).catch(() => null)
+  void musicAi.ensureMusicAIAsync(30000).catch(() => null)
+  // Blijf proberen tot ze online zijn (elke 20s, max 10x)
+  let retries = 0
+  const retryTimer = setInterval(() => {
+    retries += 1
+    if (retries > 10) {
+      clearInterval(retryTimer)
+      return
+    }
+    void ai.ensureOllama().catch(() => null)
+    void comfy.ensureComfyUIAsync(8000).catch(() => null)
+    void musicAi.ensureMusicAIAsync(8000).catch(() => null)
+  }, 20000)
   createWindow()
 
   app.on('activate', () => {
@@ -285,4 +326,5 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   comfy.stopComfyUI()
   musicAi.stopMusicAI()
+  ai.stopOllama()
 })

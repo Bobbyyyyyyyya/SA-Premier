@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { useEditorStore } from '../store'
 import { formatTime } from '../lib/format'
+import { importPaths } from '../lib/inspect'
 import type { ClipEffects } from '../../../shared/types'
-import { DEFAULT_EFFECTS } from '../../../shared/types'
+import { DEFAULT_EFFECTS, uid } from '../../../shared/types'
 
 const FONT_LIST = ['Arial', 'Helvetica', 'Arial Black', 'Georgia', 'Times New Roman', 'Courier', 'Impact', 'Tahoma', 'Verdana', 'Comic Sans MS']
 
@@ -39,14 +41,84 @@ function Slider({
 export default function Inspector(): JSX.Element {
   const selectedClipId = useEditorStore((s) => s.selectedClipId)
   const clips = useEditorStore((s) => s.clips)
+  const tracks = useEditorStore((s) => s.tracks)
   const assets = useEditorStore((s) => s.assets)
   const updateClip = useEditorStore((s) => s.updateClip)
   const removeClip = useEditorStore((s) => s.removeClip)
   const addTransition = useEditorStore((s) => s.addTransition)
   const clearTransition = useEditorStore((s) => s.clearTransition)
+  const [extracting, setExtracting] = useState(false)
+  const [extractMsg, setExtractMsg] = useState('')
 
   const clip = clips.find((c) => c.id === selectedClipId)
   const asset = clip && clip.kind !== 'text' ? assets.find((a) => a.id === clip.assetId) : undefined
+  const track = clip ? tracks.find((t) => t.id === clip.trackId) : undefined
+  const hasAudio = clip && (clip.kind === 'audio' || (clip.kind === 'video' && !!asset?.hasAudio))
+
+  const dbOf = (v: number): string => (v <= 0.001 ? '-∞' : `${(20 * Math.log10(Math.max(0.001, v))).toFixed(1)} dB`)
+
+  const extractAudioClip = (): void => {
+    if (!clip || !asset || !hasAudio) return
+    const s = useEditorStore.getState()
+    let audioTrack = s.tracks.find((t) => t.kind === 'audio')
+    if (!audioTrack) {
+      s.addTrack('audio')
+      audioTrack = useEditorStore.getState().tracks.find((t) => t.kind === 'audio')
+    }
+    if (!audioTrack) return
+    // voorkom dubbele extractie op exact dezelfde plek
+    const exists = s.clips.some(
+      (c) => c.kind === 'audio' && c.assetId === clip.assetId && Math.abs(c.start - clip.start) < 0.01
+    )
+    if (exists) {
+      setExtractMsg('Audio staat al op de audiotrack.')
+      return
+    }
+    const audioClip = {
+      id: uid(),
+      assetId: asset.id,
+      assetPath: asset.path,
+      trackId: audioTrack.id,
+      start: clip.start,
+      duration: clip.duration,
+      sourceStart: clip.sourceStart,
+      volume: clip.volume,
+      effects: { ...DEFAULT_EFFECTS },
+      transitionIn: null as null,
+      transitionOut: null as null,
+      kind: 'audio' as const
+    }
+    useEditorStore.setState((st) => ({ clips: [...st.clips, audioClip], selectedClipId: audioClip.id }))
+    setExtractMsg('Audio geëxtraheerd naar audiotrack ✓')
+  }
+
+  const saveAudioFile = async (): Promise<void> => {
+    if (!clip || !asset) return
+    setExtracting(true)
+    setExtractMsg('')
+    try {
+      const r = await window.api.extractAudio(asset.path, {
+        start: clip.sourceStart,
+        duration: clip.duration,
+        name: (asset.name || 'audio').replace(/\.[a-z0-9]+$/i, '')
+      })
+      if (r.cancelled) {
+        setExtractMsg('')
+      } else if (r.ok) {
+        setExtractMsg(`Audio opgeslagen ✓ (${r.outPath})`)
+        if (r.outPath) {
+          await importPaths([r.outPath], { place: false })
+          await window.api.showItemInFolder(r.outPath)
+        }
+      } else {
+        setExtractMsg(`Mislukt: ${r.error ?? 'onbekend'}`)
+      }
+    } catch (e) {
+      setExtractMsg(`Mislukt: ${(e as Error).message}`)
+    } finally {
+      setExtracting(false)
+    }
+  }
 
   if (!clip) {
     return (
@@ -158,15 +230,44 @@ export default function Inspector(): JSX.Element {
               step={0.01}
               value={clip.volume}
               onChange={(e) => updateClip(clip.id, { volume: +e.target.value })}
+              title="0% = stil · 100% = origineel · tot 200% gain bij export"
             />
-            <span className="val">{Math.round(clip.volume * 100)}</span>
+            <span className="val" title={dbOf(clip.volume)}>{Math.round(clip.volume * 100)}%</span>
+          </div>
+          <div className="ctl">
+            <label />
+            <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+              {clip.volume <= 0.001 ? 'Gedempt' : dbOf(clip.volume)}
+              {clip.volume > 1 ? ' · boost (alleen export >100%)' : ' · preview tot 100%'}
+              {track?.muted ? ' · track is gemute!' : ''}
+            </span>
           </div>
           <div className="btn-row">
+            <button onClick={() => updateClip(clip.id, { volume: 1 })}>100%</button>
+            <button onClick={() => updateClip(clip.id, { volume: 0 })}>Mute</button>
             <button className="danger-ghost" onClick={() => removeClip(clip.id)}>
               Delete clip
             </button>
           </div>
         </div>
+
+        {hasAudio && (
+          <div className="inspector-section">
+            <h4>Audio</h4>
+            <div className="btn-row">
+              {clip.kind === 'video' && (
+                <button onClick={extractAudioClip} title="Zet het geluid van deze video als aparte audio-clip op de audiotrack">
+                  ⤷ Extract audio naar track
+                </button>
+              )}
+              <button onClick={saveAudioFile} disabled={extracting} title="Sla alleen het geluid op als WAV/MP3-bestand">
+                {extracting ? 'Bezig…' : '💾 Save audio als…'}
+              </button>
+            </div>
+            {extractMsg && <div className="ai-hint">{extractMsg}</div>}
+            <div className="ai-hint">Tip: video met aparte audio-clip → video-audio wordt auto-gemute in preview om dubbel geluid te voorkomen.</div>
+          </div>
+        )}
 
         <div className="inspector-section">
           <h4>Effects</h4>

@@ -34,25 +34,55 @@ export async function musicStatus(): Promise<{ available: boolean; device?: stri
   } catch { return { available: false } }
 }
 
-export function ensureMusicAI(): void {
-  void (async () => {
-    const s = await musicStatus()
-    if (s.available) return
-
-    killZombieOnPort(PORT)
-    await new Promise((r) => setTimeout(r, 500))
-
-    const bin = pythonBin()
-    if (!fs.existsSync(path.join(comfyDir, 'music_server.py'))) {
-      console.log('[music] music_server.py not found at', path.join(comfyDir, 'music_server.py'))
-      return
+async function waitForMusicReady(timeoutMs = 45000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    try {
+      const s = await musicStatus()
+      if (s.available) return true
+    } catch {
+      // ignore
     }
-    console.log('[music] starting server:', bin)
-    server = spawn(bin, ['music_server.py'], {
-      cwd: comfyDir,
+    await new Promise((r) => setTimeout(r, 1500))
+  }
+  return false
+}
+
+/** Start MusicGen-server automatisch en wacht tot hij bereikbaar is. */
+export async function ensureMusicAIAsync(waitMs = 45000): Promise<{ available: boolean; started?: boolean; error?: string }> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const setup = require('./ai-setup') as typeof import('./ai-setup')
+    if (!setup.shouldAutostart('music')) {
+      return { available: false, error: 'MusicGen is uitgeschakeld in AI-setup (wizard). Zet hem daar weer aan.' }
+    }
+  } catch {
+    // ignore
+  }
+  const s = await musicStatus()
+  if (s.available) return { available: true, started: false }
+
+  killZombieOnPort(PORT)
+  await new Promise((r) => setTimeout(r, 500))
+
+  const serverPy = path.join(comfyDir, 'music_server.py')
+  const altPy = path.join(os.homedir(), 'MusicAI', 'music_server.py')
+  const entry = fs.existsSync(serverPy) ? serverPy : fs.existsSync(altPy) ? altPy : null
+  if (!entry) {
+    return { available: false, error: `music_server.py niet gevonden in ${comfyDir}. Plaats music_server.py daar om echte AI-muziek te gebruiken (synth blijft werken).` }
+  }
+  const bin = pythonBin()
+  try {
+    console.log('[music] starting server:', bin, entry)
+    if (server) {
+      try { server.kill() } catch { /* ignore */ }
+      server = null
+    }
+    server = spawn(bin, [entry], {
+      cwd: path.dirname(entry),
       stdio: 'ignore',
       detached: true,
-      env: { ...process.env, PYTHONUNBUFFERED: '1', TQDM_DISABLE: '1' }
+      env: { ...process.env, PYTHONUNBUFFERED: '1', TQDM_DISABLE: '1', MUSIC_PORT: String(PORT) }
     })
     server.unref()
     server.on('exit', (code) => {
@@ -63,7 +93,15 @@ export function ensureMusicAI(): void {
       console.error('[music] failed to start:', e.message)
       server = null
     })
-  })()
+  } catch (e) {
+    return { available: false, error: (e as Error).message }
+  }
+  const ok = await waitForMusicReady(waitMs)
+  return ok ? { available: true, started: true } : { available: false, error: 'Music-server start, maar reageert niet (timeout). Synth blijft beschikbaar.' }
+}
+
+export function ensureMusicAI(): void {
+  void ensureMusicAIAsync()
 }
 
 export function stopMusicAI(): void {

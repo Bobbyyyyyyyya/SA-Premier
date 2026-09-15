@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useEditorStore, selectTotal } from '../store'
 import { renderFrame } from '../lib/compositor'
 import { PlayerManager } from '../lib/player'
@@ -9,6 +9,8 @@ export default function PreviewPlayer(): JSX.Element {
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
   const playersRef = useRef<PlayerManager | null>(null)
   const renderTimer = useRef(0)
+  const [masterVol, setMasterVol] = useState(1)
+  const [masterMuted, setMasterMuted] = useState(false)
 
   const project = useEditorStore((s) => s.project)
   const playing = useEditorStore((s) => s.playing)
@@ -16,6 +18,11 @@ export default function PreviewPlayer(): JSX.Element {
   const total = useEditorStore(selectTotal)
 
   if (!playersRef.current) playersRef.current = new PlayerManager()
+
+  // master volume doorgeven aan alle players
+  useEffect(() => {
+    playersRef.current?.setMaster(masterVol, masterMuted)
+  }, [masterVol, masterMuted])
 
   const renderFrameAt = useCallback((t: number): void => {
     const canvas = canvasRef.current
@@ -65,6 +72,10 @@ export default function PreviewPlayer(): JSX.Element {
         if (clip.kind === 'text') continue
         const track = state.tracks.find((x) => x.id === clip.trackId)
         const asset = state.assets.find((a) => a.id === clip.assetId)
+        if (!asset) {
+          players.removeClip(clip.id)
+          continue
+        }
         if (asset) players.element(clip.id, asset, clip.kind)
         // if video has separate audio clip, mute the video element to avoid double audio
         let muted = track?.muted ?? false
@@ -82,9 +93,11 @@ export default function PreviewPlayer(): JSX.Element {
           clip.sourceStart,
           muted,
           t,
-          true
+          true,
+          clip.volume
         )
       }
+      // opgeruimde clips verwijderen uit players
       renderFrameAt(t)
       raf = requestAnimationFrame(tick)
     }
@@ -105,14 +118,33 @@ export default function PreviewPlayer(): JSX.Element {
         s.tracks !== prev.tracks ||
         s.project.width !== prev.project.width ||
         s.project.height !== prev.project.height
-      if (!changed) return
+      if (!changed) {
+        // alleen volume veranderd? dan toch volume pushen
+        if (s.clips !== prev.clips) {
+          const players = playersRef.current
+          if (players) {
+            for (const clip of s.clips) {
+              if (clip.kind === 'text') continue
+              const track = s.tracks.find((x) => x.id === clip.trackId)
+              players.seekTo(clip.id, clip.start, clip.duration, clip.sourceStart, s.playhead, clip.volume, track?.muted ?? false)
+            }
+          }
+        }
+        return
+      }
       const players = playersRef.current
       if (players) {
+        // verwijderde clips opruimen
+        const alive = new Set(s.clips.map((c) => c.id))
+        for (const c of prev.clips) {
+          if (!alive.has(c.id)) players.removeClip(c.id)
+        }
         for (const clip of s.clips) {
           if (clip.kind === 'text') continue
           const asset = s.assets.find((a) => a.id === clip.assetId)
+          const track = s.tracks.find((x) => x.id === clip.trackId)
           if (asset) players.element(clip.id, asset, clip.kind)
-          players.seekTo(clip.id, clip.start, clip.duration, clip.sourceStart, s.playhead)
+          players.seekTo(clip.id, clip.start, clip.duration, clip.sourceStart, s.playhead, clip.volume, track?.muted ?? false)
         }
       }
       renderFrameAt(s.playhead)
@@ -127,9 +159,11 @@ export default function PreviewPlayer(): JSX.Element {
     const players = playersRef.current
     if (players) {
       for (const clip of s.clips) {
+        if (clip.kind === 'text') continue
         const asset = s.assets.find((a) => a.id === clip.assetId)
+        const track = s.tracks.find((x) => x.id === clip.trackId)
         if (asset) players.element(clip.id, asset, clip.kind)
-        players.seekTo(clip.id, clip.start, clip.duration, clip.sourceStart, nt)
+        players.seekTo(clip.id, clip.start, clip.duration, clip.sourceStart, nt, clip.volume, track?.muted ?? false)
       }
     }
     renderFrameAt(nt)
@@ -183,6 +217,28 @@ export default function PreviewPlayer(): JSX.Element {
           <span className="time">
             {formatTime(playhead, project.fps)} <span className="total">/ {formatTime(total, project.fps)}</span>
           </span>
+        </div>
+        <div className="vol" title="Master volume">
+          <button
+            className={`vol-mute ${masterMuted || masterVol <= 0 ? 'active' : ''}`}
+            onClick={() => setMasterMuted(!masterMuted)}
+            title={masterMuted ? 'Unmute' : 'Mute'}
+          >
+            {masterMuted || masterVol <= 0 ? '🔇' : masterVol < 0.5 ? '🔈' : '🔊'}
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={masterMuted ? 0 : masterVol}
+            onChange={(e) => {
+              const v = +e.target.value
+              setMasterVol(v)
+              if (v > 0) setMasterMuted(false)
+            }}
+          />
+          <span className="vol-pct">{Math.round((masterMuted ? 0 : masterVol) * 100)}%</span>
         </div>
       </div>
     </section>

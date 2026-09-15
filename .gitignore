@@ -1,5 +1,11 @@
 node_modules/
 out/
 dist/
+dist-full/
 *.log
 .DS_Store
+# Grote AI-modellen nooit committen (alleen lokaal voor Full-build)
+resources/models/
+resources/music-models/
+resources/comfy/
+!resources/README.md

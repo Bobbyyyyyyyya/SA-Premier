@@ -1,7 +1,10 @@
 import ffmpegPath from 'ffmpeg-static'
+import { spawn, ChildProcess, execSync } from 'node:child_process'
 import type { OllamaModelInfo, AiGenerateResult } from '../shared/types'
 
 const OLLAMA = process.env.OLLAMA_HOST || 'http://localhost:11434'
+
+let ollamaProc: ChildProcess | null = null
 
 function ollamaUrl(path: string): string {
   return OLLAMA.replace(/\/$/, '') + path
@@ -9,13 +12,79 @@ function ollamaUrl(path: string): string {
 
 export async function pingOllama(): Promise<{ available: boolean; version?: string }> {
   try {
-    const res = await fetch(ollamaUrl('/api/version'))
+    const res = await fetch(ollamaUrl('/api/version'), { signal: AbortSignal.timeout(3000) })
     if (!res.ok) return { available: false }
     const data = (await res.json()) as { version?: string }
     return { available: true, version: data.version }
   } catch {
     return { available: false }
   }
+}
+
+function ollamaBinaryExists(): boolean {
+  try {
+    execSync('which ollama', { stdio: 'ignore' })
+    return true
+  } catch {
+    try {
+      execSync('where ollama', { stdio: 'ignore' })
+      return true
+    } catch {
+      return false
+    }
+  }
+}
+
+/** Probeer Ollama automatisch te starten (ollama serve). Geeft true terug als hij bereikbaar is. */
+export async function ensureOllama(): Promise<{ available: boolean; started?: boolean; error?: string }> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const setup = require('./ai-setup') as typeof import('./ai-setup')
+    if (!setup.shouldAutostart('ollama')) {
+      return { available: false, error: 'Ollama is uitgeschakeld in AI-setup (wizard). Zet hem daar weer aan.' }
+    }
+  } catch {
+    // ignore
+  }
+  const cur = await pingOllama()
+  if (cur.available) return { available: true, started: false }
+  if (!ollamaBinaryExists()) {
+    return { available: false, error: 'Ollama is niet geïnstalleerd (zie ollama.com).' }
+  }
+  try {
+    if (!ollamaProc) {
+      ollamaProc = spawn('ollama', ['serve'], {
+        stdio: 'ignore',
+        detached: true,
+        env: { ...process.env }
+      })
+      ollamaProc.unref()
+      ollamaProc.on('exit', () => {
+        ollamaProc = null
+      })
+      ollamaProc.on('error', () => {
+        ollamaProc = null
+      })
+    }
+  } catch (e) {
+    return { available: false, error: (e as Error).message }
+  }
+  // wacht tot hij online is (max ~15s)
+  for (let i = 0; i < 15; i++) {
+    await new Promise((r) => setTimeout(r, 1000))
+    const st = await pingOllama()
+    if (st.available) return { available: true, started: true }
+  }
+  return { available: false, error: 'Ollama starten is niet gelukt (timeout).' }
+}
+
+export function stopOllama(): void {
+  try {
+    ollamaProc?.kill()
+  } catch {
+    // ignore
+  }
+  ollamaProc = null
 }
 
 export async function listModels(): Promise<OllamaModelInfo[]> {

@@ -1,12 +1,44 @@
 import ffmpeg from 'fluent-ffmpeg'
 import ffmpegPath from 'ffmpeg-static'
+import fs from 'node:fs'
 import type { WebContents } from 'electron'
 import type { Clip, ClipEffects, ExportProgress, ExportRequest, ExportStartResult } from '../shared/types'
 
-if (!ffmpegPath) {
-  throw new Error('ffmpeg-static binary not found')
+function findFfmpegBin(): string | null {
+  try {
+    // In packaged app kan de binary in app.asar.unpacked of extraResources/bin staan
+    const candidates: (string | null | undefined)[] = [
+      ffmpegPath as unknown as string | null,
+      (process as unknown as { resourcesPath?: string }).resourcesPath
+        ? (process as unknown as { resourcesPath?: string }).resourcesPath + '/bin/ffmpeg'
+        : null
+    ]
+    for (const c of candidates) {
+      if (c && fs.existsSync(c)) return c
+    }
+  } catch {
+    // ignore
+  }
+  return (ffmpegPath as unknown as string) || null
 }
-ffmpeg.setFfmpegPath(ffmpegPath)
+
+const FFMPEG_BIN = findFfmpegBin()
+if (FFMPEG_BIN) {
+  ffmpeg.setFfmpegPath(FFMPEG_BIN)
+} else {
+  console.error('[export] ffmpeg binary niet gevonden — export en thumbnails zijn uitgeschakeld (Lite blijft verder werken).')
+}
+
+/** Publieke getter zodat main/index.ts dezelfde binary gebruikt (thumbnails, duur). */
+export function ffmpegBin(): string | null {
+  return FFMPEG_BIN
+}
+
+function needFfmpeg(): void {
+  if (!FFMPEG_BIN) {
+    throw new Error('ffmpeg ontbreekt in deze installatie. Herinstalleer de app (Lite of Full).')
+  }
+}
 
 let current: { cmd: ffmpeg.FfmpegCommand | null; cancelled: boolean } | null = null
 
@@ -43,6 +75,7 @@ function timemarkToSeconds(tm: string): number {
 }
 
 function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: number } {
+  needFfmpeg()
   const { outPath, width, height, fps } = req
   const { tracks, clips } = req.project
   const assets = new Map(req.assets.map((a) => [a.path, a]))
@@ -238,6 +271,11 @@ export function renderToFile(
 }
 
 export function startExport(webContents: WebContents, req: ExportRequest): ExportStartResult {
+  try {
+    needFfmpeg()
+  } catch (err) {
+    return { error: (err as Error).message }
+  }
   const state = { cmd: null as null | ffmpeg.FfmpegCommand, cancelled: false }
   current = state
 
@@ -300,4 +338,42 @@ export function cancelExport(): void {
     }
     current = null
   }
+}
+
+/** Extraheer audio uit een videobestand naar wav/mp3/m4a. */
+export function extractAudioToFile(
+  inPath: string,
+  outPath: string,
+  opts?: { start?: number; duration?: number }
+): Promise<{ outPath: string }> {
+  try {
+    needFfmpeg()
+  } catch (e) {
+    return Promise.reject(e)
+  }
+  return new Promise((resolve, reject) => {
+    try {
+      const cmd = ffmpeg(inPath)
+      if (opts?.start != null && Number.isFinite(opts.start)) {
+        cmd.seekInput(Math.max(0, opts.start))
+      }
+      if (opts?.duration != null && Number.isFinite(opts.duration) && opts.duration > 0) {
+        cmd.duration(opts.duration)
+      }
+      cmd.noVideo()
+      if (/\.mp3$/i.test(outPath)) {
+        cmd.outputOptions(['-c:a', 'libmp3lame', '-b:a', '192k'])
+      } else if (/\.m4a$/i.test(outPath)) {
+        cmd.outputOptions(['-c:a', 'aac', '-b:a', '192k'])
+      } else {
+        cmd.outputOptions(['-c:a', 'pcm_s16le', '-ar', '44100', '-ac', '2'])
+      }
+      cmd.output(outPath)
+      cmd.on('end', () => resolve({ outPath }))
+      cmd.on('error', (err: Error) => reject(err))
+      cmd.run()
+    } catch (e) {
+      reject(e as Error)
+    }
+  })
 }
