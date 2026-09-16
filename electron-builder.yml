@@ -52,7 +52,7 @@ extraResources:
 mac:
   category: public.app-category.video
   # PKG = echte macOS installer-pakket (wizard: welkom → voorwaarden → locatie → installatie)
-  # DMG = slepen-naar-Programma's (zoals je nu krijgt). We bieden beide, PKG is het meest "Windows .exe"-achtig.
+  # DMG = slepen-naar-Programma's. We bieden beide; PKG is het meest "Windows .exe"-achtig.
   target:
     - dmg
     - zip
@@ -62,20 +62,6 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
-  # PKG-specifieke wizard-instellingen
-  # (zonder notarization → "kon niet scannen", overrulable via Rechtsklik → Open)
-  artifactName: "${productName}-${version}-${arch}.${ext}"
-
-pkg:
-  # productpkg → standaard macOS installer-wizard (voorwaarden, locatie, voortgang)
-  isRelocatable: true
-  allowAnywhere: true
-  allowCurrentUserHome: true
-  allowNetwork: false
-
-dmg:
-  sign: false
-  artifactName: "${productName}-${version}-${arch}.${ext}"
 
 win:
   # NSIS .exe = Windows-equivalent van PKG: wizard met welkom → voorwaarden → locatie → componenten → installatie

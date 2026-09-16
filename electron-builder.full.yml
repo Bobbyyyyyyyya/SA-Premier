@@ -52,15 +52,6 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
-  artifactName: "${productName}-${version}-${arch}.${ext}"
-pkg:
-  isRelocatable: true
-  allowAnywhere: true
-  allowCurrentUserHome: true
-  allowNetwork: false
-dmg:
-  sign: false
-  artifactName: "${productName}-${version}-${arch}.${ext}"
 win:
   target:
     - nsis
