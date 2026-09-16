@@ -59,6 +59,8 @@ win:
     - nsis
     - portable
 linux:
+  maintainer: SA Premier <benthijmen@gmail.com>
+  category: Video
   target:
     - AppImage
     - deb

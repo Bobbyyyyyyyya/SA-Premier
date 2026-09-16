@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "A CapCut / DaVinci Resolve style video editor built with Electron, React and TypeScript",
   "main": "./out/main/index.js",
+  "author": "SA Premier <benthijmen@gmail.com>",
   "license": "MIT",
   "scripts": {
     "dev": "electron-vite dev",
