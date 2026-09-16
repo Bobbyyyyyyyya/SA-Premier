@@ -1,0 +1,111 @@
+name: Test Release
+
+on:
+  push:
+    tags:
+      - 'v*-test*'
+      - 'v*-beta*'
+      - 'v*-alpha*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag voor test release (bv. v0.1.0-test.1)'
+        required: false
+        default: ''
+      prerelease:
+        description: 'Markeer als pre-release'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  # Alleen bouwen — snel, altijd groen ook zonder AI-modellen (Lite)
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            label: mac
+          - os: ubuntu-latest
+            label: linux
+          - os: windows-latest
+            label: win
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install deps
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build (vite)
+        run: npm run build
+      - name: Install electron-builder
+        run: npm install --no-save electron-builder
+      - name: Package Lite (dir, no installer)
+        run: npx electron-builder --config electron-builder.yml --dir --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: List lite output
+        shell: bash
+        run: |
+          echo "=== dist ==="; ls -R dist 2>&1 | head -n 80
+          echo "=== resources ==="; ls resources 2>&1 | head -n 20
+      - name: Upload Lite artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lite-${{ matrix.label }}
+          path: dist/**
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.tag }}" ]]; then
+            echo "value=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "value=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+          fi
+      - name: Download all Lite artefacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artefacts
+      - name: Flatten for release
+        shell: bash
+        run: |
+          mkdir -p dist
+          for d in artefacts/lite-*/; do
+            label=$(basename "$d")
+            tar -czf "dist/SA-Premier-lite-${label}.tar.gz" -C "$d" . 2>&1 | head
+            ls -lh "dist/SA-Premier-lite-${label}.tar.gz"
+          done
+          ls -R artefacts | head -n 60
+          ls -lh dist | head -n 20
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.value }}
+          name: SA Premier ${{ steps.tag.outputs.value }} (test)
+          prerelease: ${{ inputs.prerelease != 'false' }}
+          generate_release_notes: true
+          body: |
+            **Test release — Lite build (werkt altijd zonder AI)**
+            - Lite werkt altijd zonder AI-modellen: monteren, preview, volume, export via gebundelde ffmpeg.
+            - Bij eerste start kiest de user: Licht (download bij gebruik) vs Volledig (meegeleverd) vs Aangepast.
+            - Artefacts hieronder zijn de Lite `--dir` builds per platform (tar.gz). Installer (dmg/nsis) komt in een volgende stap.
+          files: |
+            dist/*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
