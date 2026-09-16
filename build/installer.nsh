@@ -7,6 +7,7 @@
 ; macOS/Linux: DMG/AppImage hebben geen NSIS-pagina — daar verschijnt
 ; dezelfde wizard in de app zelf (Home → 🤖 AI-setup).
 
+!include "MUI2.nsh"
 !include "nsDialogs.nsh"
 !include "LogicLib.nsh"
 
