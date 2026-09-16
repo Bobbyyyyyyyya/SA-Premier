@@ -29,7 +29,70 @@ function file(): string {
   return path.join(app.getPath('userData'), 'ai-setup.json')
 }
 
+/** Leest keuze die de Windows-installer eventueel al wegschreef (installer-choice.txt). */
+function readInstallerChoice(): AiSetup | null {
+  // 1) %APPDATA%/SA Premier/installer-choice.txt (geschreven door NSIS)
+  try {
+    const p = path.join(app.getPath('userData'), 'installer-choice.txt')
+    if (fs.existsSync(p)) {
+      const raw = fs.readFileSync(p, 'utf8').trim()
+      const parsed = parseChoice(raw)
+      if (parsed) return parsed
+    }
+  } catch {
+    // ignore
+  }
+  // 2) <resources>/installer-choice.txt (geschreven naar $INSTDIR/resources)
+  try {
+    const base = bundledBase()
+    if (base) {
+      const p2 = path.join(base, 'installer-choice.txt')
+      if (fs.existsSync(p2)) {
+        const raw = fs.readFileSync(p2, 'utf8').trim()
+        const parsed = parseChoice(raw)
+        if (parsed) return parsed
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null
+}
+
+function parseChoice(raw: string): AiSetup | null {
+  const r = raw.trim()
+  if (r === 'ondemand' || r === 'full') {
+    return { mode: r as AiSetupMode, comfy: true, music: true, ollama: true, completed: true, updatedAt: Date.now() }
+  }
+  if (r.startsWith('custom:')) {
+    const comfy = r.includes('comfy=1')
+    const music = r.includes('music=1')
+    const ollama = r.includes('ollama=1')
+    return { mode: 'custom', comfy, music, ollama, completed: true, updatedAt: Date.now() }
+  }
+  return null
+}
+
+function primeFromInstallerIfNeeded(): void {
+  try {
+    if (fs.existsSync(file())) return
+    const from = readInstallerChoice()
+    if (!from) return
+    fs.mkdirSync(path.dirname(file()), { recursive: true })
+    fs.writeFileSync(file(), JSON.stringify(from, null, 2))
+    // keuze geïmporteerd — opruimen hoeft niet, maar mag
+    try { fs.unlinkSync(path.join(app.getPath('userData'), 'installer-choice.txt')) } catch { /* ignore */ }
+    try {
+      const base = bundledBase()
+      if (base) fs.unlinkSync(path.join(base, 'installer-choice.txt'))
+    } catch { /* ignore */ }
+  } catch {
+    // ignore
+  }
+}
+
 export function getAiSetup(): AiSetup {
+  primeFromInstallerIfNeeded()
   try {
     const p = file()
     if (!fs.existsSync(p)) return { ...DEFAULTS }

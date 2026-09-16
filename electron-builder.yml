@@ -54,10 +54,21 @@ mac:
   target:
     - dmg
     - zip
+  # "beschadigd" vs "kon niet scannen": zonder Apple-notarisatie zegt macOS
+  # standaard "kan niet controleren of app vrij is van malware" (op te lossen met
+  # rechterklik → Open). Ad-hoc signen voorkomt het engere "is beschadigd".
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # Laat CI ad-hoc signen (werkt altijd); echte notarisatie alleen als APPLE_* secrets staan.
+  # Zie .github/workflows/test-release.yml voor notarize-config.
+
 win:
   target:
     - nsis
     - portable
+  # Icon wordt op CI automatisch gegenereerd als build/icon.ico ontbreekt
 linux:
   maintainer: SA Premier <benthijmen@gmail.com>
   category: Video
@@ -68,4 +79,10 @@ linux:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  runAfterFinish: true
   uninstallDisplayName: SA Premier
+  include: build/installer.nsh
+  warningsAsErrors: false

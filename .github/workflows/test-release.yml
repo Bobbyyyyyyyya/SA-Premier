@@ -53,6 +53,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          # Voor nu: ad-hoc signen → "kon niet scannen" i.p.v. "is beschadigd".
+          # Voor notarization (geen waarschuwing): zet APPLE_ID / APPLE_ID_PASSWORD / APPLE_TEAM_ID als repo secrets.
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       - name: List lite output
         shell: bash
         run: |

@@ -29,6 +29,15 @@ extraResources:
     filter:
       - ffmpeg
       - ffmpeg.exe
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  runAfterFinish: true
+  uninstallDisplayName: SA Premier Full
+  include: build/installer.nsh
 extraMetadata:
   version: 0.1.0
 
@@ -37,6 +46,10 @@ mac:
   target:
     - dmg
     - zip
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
 win:
   target:
     - nsis
