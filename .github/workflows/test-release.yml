@@ -55,8 +55,9 @@ jobs:
       - name: List lite output
         shell: bash
         run: |
-          echo "=== dist ==="; ls -R dist 2>&1 | head -n 80
-          echo "=== resources ==="; ls resources 2>&1 | head -n 20
+          set +o pipefail
+          echo "=== dist ==="; ls -R dist 2>&1 | head -n 80 || true
+          echo "=== resources ==="; ls resources 2>&1 | head -n 20 || true
       - name: Upload Lite artifact
         uses: actions/upload-artifact@v4
         with:
@@ -86,14 +87,15 @@ jobs:
       - name: Flatten for release
         shell: bash
         run: |
+          set +o pipefail
           mkdir -p dist
           for d in artefacts/lite-*/; do
             label=$(basename "$d")
-            tar -czf "dist/SA-Premier-lite-${label}.tar.gz" -C "$d" . 2>&1 | head
-            ls -lh "dist/SA-Premier-lite-${label}.tar.gz"
+            tar -czf "dist/SA-Premier-lite-${label}.tar.gz" -C "$d" . 2>&1 | head -n 20 || true
+            ls -lh "dist/SA-Premier-lite-${label}.tar.gz" || true
           done
-          ls -R artefacts | head -n 60
-          ls -lh dist | head -n 20
+          ls -R artefacts 2>&1 | head -n 60 || true
+          ls -lh dist 2>&1 | head -n 20 || true
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.value }}
