@@ -24,6 +24,11 @@ appId: com.sapremier.app
 productName: SA Premier
 directories:
   output: dist
+publish:
+  provider: github
+  owner: Bobbyyyyyyyya
+  repo: SA-Premier
+  private: false
 files:
   - out/**/*
   - package.json

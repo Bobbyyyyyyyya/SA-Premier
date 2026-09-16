@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from 'electron'
+import { autoUpdater } from 'electron-updater'
 import { execFile } from 'node:child_process'
 import path from 'node:path'
 import fs from 'node:fs'
@@ -26,7 +27,7 @@ protocol.registerSchemesAsPrivileged([
   }
 ])
 
-function createWindow(): void {
+function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1480,
     height: 920,
@@ -47,6 +48,51 @@ function createWindow(): void {
   } else {
     win.loadFile(path.join(__dirname, '../renderer/index.html'))
   }
+  return win
+}
+
+function setupAutoUpdater(win: BrowserWindow): void {
+  if (!app.isPackaged) return
+  autoUpdater.autoDownload = false
+  autoUpdater.autoInstallOnAppQuit = true
+
+  autoUpdater.on('update-available', (info) => {
+    const r = dialog.showMessageBoxSync(win, {
+      type: 'info',
+      buttons: ['Download nu', 'Later'],
+      defaultId: 0,
+      title: 'Update beschikbaar',
+      message: `SA Premier ${info.version} is beschikbaar (nu ${app.getVersion()}). Wil je updaten? Bestaande app wordt bijgewerkt.`
+    })
+    if (r === 0) {
+      void autoUpdater.downloadUpdate()
+      win.webContents.send('updater-status', { phase: 'downloading', percent: 0, version: info.version })
+    }
+  })
+  autoUpdater.on('download-progress', (p) => {
+    win.webContents.send('updater-status', { phase: 'downloading', percent: Math.round(p.percent), version: p.total ? undefined : undefined })
+  })
+  autoUpdater.on('update-downloaded', (info) => {
+    win.webContents.send('updater-status', { phase: 'downloaded', percent: 100, version: info.version })
+    const r = dialog.showMessageBoxSync(win, {
+      type: 'info',
+      buttons: ['Herstart en installeer', 'Later'],
+      defaultId: 0,
+      title: 'Update klaar',
+      message: `Update ${info.version} gedownload. Herstart om te installeren — vervangt de bestaande SA Premier (.pkg/.exe/.deb updatet automatisch).`
+    })
+    if (r === 0) autoUpdater.quitAndInstall()
+  })
+  autoUpdater.on('error', (err) => {
+    win.webContents.send('updater-status', { phase: 'error', message: err.message })
+  })
+
+  // Controleer elke 6 uur + bij start (na 8s)
+  const check = (): void => {
+    void autoUpdater.checkForUpdates().catch(() => null)
+  }
+  setTimeout(check, 8000)
+  setInterval(check, 6 * 60 * 60 * 1000)
 }
 
 function registerIpc(): void {
@@ -260,6 +306,13 @@ function registerIpc(): void {
   ipcMain.handle('ai-setup-get', () => aiSetup.getAiSetup())
   ipcMain.handle('ai-setup-set', (_e, patch: Partial<AiSetup>) => aiSetup.setAiSetup(patch))
   ipcMain.handle('ai-setup-summary', () => aiSetup.aiSetupSummary())
+
+  ipcMain.handle('updater-check', () => {
+    if (!app.isPackaged) return { skipped: true }
+    void autoUpdater.checkForUpdates().catch(() => null)
+    return { checking: true }
+  })
+  ipcMain.handle('updater-quit-install', () => autoUpdater.quitAndInstall())
 }
 
 app.whenReady().then(() => {
@@ -312,7 +365,8 @@ app.whenReady().then(() => {
     void comfy.ensureComfyUIAsync(8000).catch(() => null)
     void musicAi.ensureMusicAIAsync(8000).catch(() => null)
   }, 20000)
-  createWindow()
+  const win = createWindow()
+  setupAutoUpdater(win)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
