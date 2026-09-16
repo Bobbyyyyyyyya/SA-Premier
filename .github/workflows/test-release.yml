@@ -48,21 +48,30 @@ jobs:
         run: npm run build
       - name: Install electron-builder
         run: npm install --no-save electron-builder
-      - name: Package Lite (dir, no installer)
-        run: npx electron-builder --config electron-builder.yml --dir --publish never
+      - name: Package Lite (echte installer — geen map)
+        run: npx electron-builder --config electron-builder.yml --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - name: List lite output
         shell: bash
         run: |
           set +o pipefail
-          echo "=== dist ==="; ls -R dist 2>&1 | head -n 80 || true
+          echo "=== dist (top) ==="; ls -lh dist 2>&1 | head -n 40 || true
+          echo "=== find installers ==="; find dist -maxdepth 2 -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.blockmap" \) -ls 2>&1 | head -n 40 || true
           echo "=== resources ==="; ls resources 2>&1 | head -n 20 || true
-      - name: Upload Lite artifact
+      - name: Upload Lite installers
         uses: actions/upload-artifact@v4
         with:
           name: lite-${{ matrix.label }}
-          path: dist/**
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.exe
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.blockmap
+            dist/*.yml
           if-no-files-found: error
 
   release:
@@ -84,18 +93,14 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artefacts
-      - name: Flatten for release
+      - name: Gather installers for release
         shell: bash
         run: |
           set +o pipefail
           mkdir -p dist
-          for d in artefacts/lite-*/; do
-            label=$(basename "$d")
-            tar -czf "dist/SA-Premier-lite-${label}.tar.gz" -C "$d" . 2>&1 | head -n 20 || true
-            ls -lh "dist/SA-Premier-lite-${label}.tar.gz" || true
-          done
-          ls -R artefacts 2>&1 | head -n 60 || true
-          ls -lh dist 2>&1 | head -n 20 || true
+          find artefacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" -o -name "*.AppImage" -o -name "*.deb" \) -exec cp -v {} dist/ \; 2>&1 | head -n 40 || true
+          echo "=== artefacts ==="; ls -R artefacts 2>&1 | head -n 80 || true
+          echo "=== dist ==="; ls -lh dist 2>&1 | head -n 40 || true
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.value }}
@@ -103,11 +108,15 @@ jobs:
           prerelease: ${{ inputs.prerelease != 'false' }}
           generate_release_notes: true
           body: |
-            **Test release — Lite build (werkt altijd zonder AI)**
+            **Test release — Lite (echte installers, werkt altijd zonder AI)**
+            - macOS: open `.dmg` en sleep SA Premier naar Programma's. Windows: `.exe` installer. Linux: `.AppImage` of `.deb`.
             - Lite werkt altijd zonder AI-modellen: monteren, preview, volume, export via gebundelde ffmpeg.
             - Bij eerste start kiest de user: Licht (download bij gebruik) vs Volledig (meegeleverd) vs Aangepast.
-            - Artefacts hieronder zijn de Lite `--dir` builds per platform (tar.gz). Installer (dmg/nsis) komt in een volgende stap.
           files: |
-            dist/*.tar.gz
+            dist/*.dmg
+            dist/*.zip
+            dist/*.exe
+            dist/*.AppImage
+            dist/*.deb
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
