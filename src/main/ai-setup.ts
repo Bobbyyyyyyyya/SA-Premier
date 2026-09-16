@@ -17,10 +17,10 @@ export interface AiSetup {
 }
 
 const DEFAULTS: AiSetup = {
-  mode: 'ondemand',
-  comfy: true,
+  mode: 'custom',
+  comfy: false,
   music: true,
-  ollama: true,
+  ollama: false,
   completed: false,
   updatedAt: Date.now()
 }
@@ -100,9 +100,9 @@ export function getAiSetup(): AiSetup {
     const data = JSON.parse(raw) as Partial<AiSetup>
     return {
       mode: data.mode ?? DEFAULTS.mode,
-      comfy: data.comfy ?? true,
-      music: data.music ?? true,
-      ollama: data.ollama ?? true,
+      comfy: data.comfy ?? DEFAULTS.comfy,
+      music: data.music ?? DEFAULTS.music,
+      ollama: data.ollama ?? DEFAULTS.ollama,
       completed: data.completed ?? false,
       updatedAt: data.updatedAt ?? Date.now()
     }
@@ -138,10 +138,9 @@ export function setAiSetup(patch: Partial<AiSetup>): AiSetup {
   return next
 }
 
-/** Mag deze engine automatisch starten? Voor eerste run (niet completed): ja. */
+/** Mag deze engine automatisch starten? Respecteert de defaults — niet alles aan bij eerste run. */
 export function shouldAutostart(engine: 'comfy' | 'music' | 'ollama'): boolean {
   const s = getAiSetup()
-  if (!s.completed) return true
   return s[engine]
 }
 

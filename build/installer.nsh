@@ -48,11 +48,11 @@ Function AiChoiceCreate
   ${NSD_CreateRadioButton} 0 44u 100% 10u "🛠️  Aangepast — zelf kiezen welke engines aan staan."
   Pop $CustomRadio
 
-  ; Defaults: Lite aangevinkt, Custom-details uit
-  SendMessage $LiteRadio ${BM_SETCHECK} ${BST_CHECKED} 0
-  StrCpy $LiteState ${BST_CHECKED}
+  ; Defaults: Aangepast met alleen Music aan — Comfy/Ollama uit (niet nodig voor basis-AI)
+  SendMessage $CustomRadio ${BM_SETCHECK} ${BST_CHECKED} 0
+  StrCpy $LiteState ${BST_UNCHECKED}
   StrCpy $FullState ${BST_UNCHECKED}
-  StrCpy $CustomState ${BST_UNCHECKED}
+  StrCpy $CustomState ${BST_CHECKED}
 
   ${NSD_CreateLabel} 8u 62u 100% 8u "Bij Aangepast:"
   Pop $0
@@ -63,13 +63,13 @@ Function AiChoiceCreate
   ${NSD_CreateCheckbox} 12u 92u 90% 9u "💬 Ollama — tekst-AI"
   Pop $OllamaCheck
 
-  ; Custom-checks default aan, maar disabled tot "Aangepast" gekozen wordt
-  SendMessage $ComfyCheck ${BM_SETCHECK} ${BST_CHECKED} 0
+  ; Custom-default: alleen Music aan
+  SendMessage $ComfyCheck ${BM_SETCHECK} ${BST_UNCHECKED} 0
   SendMessage $MusicCheck ${BM_SETCHECK} ${BST_CHECKED} 0
-  SendMessage $OllamaCheck ${BM_SETCHECK} ${BST_CHECKED} 0
-  EnableWindow $ComfyCheck 0
-  EnableWindow $MusicCheck 0
-  EnableWindow $OllamaCheck 0
+  SendMessage $OllamaCheck ${BM_SETCHECK} ${BST_UNCHECKED} 0
+  EnableWindow $ComfyCheck 1
+  EnableWindow $MusicCheck 1
+  EnableWindow $OllamaCheck 1
 
   ; Toggling
   ${NSD_OnClick} $LiteRadio AiChoiceOnChange

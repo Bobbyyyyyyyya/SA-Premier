@@ -38,8 +38,8 @@ const ENGINE_INFO = [
 export default function SetupWizard({ open, onClose }: { open: boolean; onClose: () => void }): JSX.Element | null {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [mode, setMode] = useState<Mode>('ondemand')
-  const [flags, setFlags] = useState({ comfy: true, music: true, ollama: true })
+  const [mode, setMode] = useState<Mode>('custom')
+  const [flags, setFlags] = useState({ comfy: false, music: true, ollama: false })
   const [bundledCount, setBundledCount] = useState(0)
 
   useEffect(() => {
