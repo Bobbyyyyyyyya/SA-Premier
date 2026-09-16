@@ -7,26 +7,24 @@
 ; macOS/Linux: DMG/AppImage hebben geen NSIS-pagina — daar verschijnt
 ; dezelfde wizard in de app zelf (Home → 🤖 AI-setup).
 
+!include "nsDialogs.nsh"
+!include "LogicLib.nsh"
+
+Var Dialog
+Var LiteRadio
+Var FullRadio
+Var CustomRadio
+Var ComfyCheck
+Var MusicCheck
+Var OllamaCheck
+Var LiteState
+Var FullState
+Var CustomState
+Var AiSetupChoice
+
 !macro customHeader
-  !include "nsDialogs.nsh"
-  !include "LogicLib.nsh"
-
-  Var Dialog
-  Var LiteRadio
-  Var FullRadio
-  Var CustomRadio
-  Var ComfyCheck
-  Var MusicCheck
-  Var OllamaCheck
-  Var LiteState
-  Var FullState
-  Var CustomState
-  Var AiSetupChoice
-
   ; Wizard-pagina met keuzes — komt als eerste pagina (voor Welkom)
-  ; (ligt technisch voor Welkom, maar nog steeds vóór de installatie — werkt prima.
-  ;  Volgorde Welkom→AI→Map zou idealer zijn, maar NSIS laat geen midden-invoeg toe
-  ;  zonder de standaardpagina's te dupliceren.)
+  ; (ligt technisch voor Welkom, maar nog steeds vóór de installatie — werkt prima.)
   Page custom AiChoiceCreate AiChoiceLeave
 !macroend
 
