@@ -46,15 +46,26 @@ mac:
   target:
     - dmg
     - zip
+    - pkg
   identity: '-'
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+  artifactName: "${productName}-${version}-${arch}.${ext}"
+pkg:
+  isRelocatable: true
+  allowAnywhere: true
+  allowCurrentUserHome: true
+  allowNetwork: false
+dmg:
+  sign: false
+  artifactName: "${productName}-${version}-${arch}.${ext}"
 win:
   target:
     - nsis
     - portable
+  artifactName: "${productName} Setup ${version}.${ext}"
 linux:
   maintainer: SA Premier <benthijmen@gmail.com>
   category: Video

@@ -62,8 +62,8 @@ jobs:
         shell: bash
         run: |
           set +o pipefail
-          echo "=== dist (top) ==="; ls -lh dist 2>&1 | head -n 40 || true
-          echo "=== find installers ==="; find dist -maxdepth 2 -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.blockmap" \) -ls 2>&1 | head -n 40 || true
+          echo "=== dist (top) ==="; ls -lh dist 2>&1 | head -n 60 || true
+          echo "=== find installers ==="; find dist -maxdepth 2 -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.pkg" -o -name "*.exe" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.blockmap" \) -ls 2>&1 | head -n 60 || true
           echo "=== resources ==="; ls resources 2>&1 | head -n 20 || true
       - name: Upload Lite installers
         uses: actions/upload-artifact@v4
@@ -72,6 +72,7 @@ jobs:
           path: |
             dist/*.dmg
             dist/*.zip
+            dist/*.pkg
             dist/*.exe
             dist/*.AppImage
             dist/*.deb
@@ -103,9 +104,9 @@ jobs:
         run: |
           set +o pipefail
           mkdir -p dist
-          find artefacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" -o -name "*.AppImage" -o -name "*.deb" \) -exec cp -v {} dist/ \; 2>&1 | head -n 40 || true
+          find artefacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.pkg" -o -name "*.exe" -o -name "*.AppImage" -o -name "*.deb" \) -exec cp -v {} dist/ \; 2>&1 | head -n 40 || true
           echo "=== artefacts ==="; ls -R artefacts 2>&1 | head -n 80 || true
-          echo "=== dist ==="; ls -lh dist 2>&1 | head -n 40 || true
+          echo "=== dist ==="; ls -lh dist 2>&1 | head -n 60 || true
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.value }}
@@ -113,13 +114,14 @@ jobs:
           prerelease: ${{ inputs.prerelease != 'false' }}
           generate_release_notes: true
           body: |
-            **Test release — Lite (echte installers, werkt altijd zonder AI)**
-            - macOS: open `.dmg` en sleep SA Premier naar Programma's. Windows: `.exe` installer. Linux: `.AppImage` of `.deb`.
-            - Lite werkt altijd zonder AI-modellen: monteren, preview, volume, export via gebundelde ffmpeg.
-            - Bij eerste start kiest de user: Licht (download bij gebruik) vs Volledig (meegeleverd) vs Aangepast.
+            **Test release — Lite + echte installers (PKG/DMG/EXE), werkt altijd zonder AI**
+            - macOS: `.pkg` = echte installer-wizard (voorwaarden → locatie → installatie) + `.dmg` (slepen). `.pkg` is de mac-equivalent van Windows `.exe` wizard (Setup Wizard / Custom installer). Linux: `.AppImage`/`.deb`.
+            - Windows `.exe` is een Custom installer: wizard met AI-keuze (☁️ Licht / 📦 Volledig / 🛠️ Aangepast met vinkjes per engine).
+            - macOS PKG/DMG en Linux tonen de AI-keuze daarna in de app zelf (🤖 AI-setup) —zelfde 3 opties, Lite werkt altijd zonder AI.
           files: |
             dist/*.dmg
             dist/*.zip
+            dist/*.pkg
             dist/*.exe
             dist/*.AppImage
             dist/*.deb
