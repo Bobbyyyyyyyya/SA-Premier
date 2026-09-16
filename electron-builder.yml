@@ -54,15 +54,14 @@ mac:
   target:
     - dmg
     - zip
-  # "beschadigd" vs "kon niet scannen": zonder Apple-notarisatie zegt macOS
-  # standaard "kan niet controleren of app vrij is van malware" (op te lossen met
-  # rechterklik → Open). Ad-hoc signen voorkomt het engere "is beschadigd".
+  # "beschadigd" vs "kon niet scannen": zonder Apple-notarisatie wil je ad-hoc → "kon niet scannen".
+  # Unsigned = vaker "is beschadigd". Daarom hier expliciet ad-hoc.
+  identity: '-'
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
-  # Laat CI ad-hoc signen (werkt altijd); echte notarisatie alleen als APPLE_* secrets staan.
-  # Zie .github/workflows/test-release.yml voor notarize-config.
+  # Geen notarisatie — gebruiker kan via Rechtsklik → Open of xattr -cr overrulen.
 
 win:
   target:
