@@ -3,7 +3,7 @@
 # Zie resources/README.md welke bestanden waar moeten liggen.
 
 appId: com.sapremier.app
-productName: SA Premier Full
+productName: SA Premier
 directories:
   output: dist-full
 publish:
@@ -68,7 +68,7 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   runAfterFinish: true
-  uninstallDisplayName: SA Premier Full
+  uninstallDisplayName: SA Premier
   include: build/installer.nsh
   warningsAsErrors: false
 extraMetadata:

@@ -1,48 +1,73 @@
 #!/bin/bash
-# SA Premier PKG — preinstall: vraag AI-keuze vóór installatie (wizard-gevoel)
-# Dit draait als root tijdens PKG-installatie. We tonen een native macOS dialoog
-# via osascript als GUI beschikbaar is. Keuze wordt naar /tmp geschreven voor postinstall.
+# SA Premier PKG — preinstall: vraag AI-keuze midden in de installer-wizard
+# Dit moet zichtbaar zijn, dus: launchctl asuser + activate + display dialog met knoppen.
+# Val terug op default (custom Music-only) als GUI niet beschikbaar is.
 
 set -e
 
 CHOICE_FILE="/tmp/sa-premier-ai-choice.txt"
-# default: custom = alleen Music (zelfde als app defaults)
 DEFAULT="custom: comfy=0,music=1,ollama=0"
 
-# Probeer GUI dialoog te tonen als er een ingelogde user is
 LOGGED_USER="$(stat -f %Su /dev/console 2>/dev/null || echo "")"
-DISPLAY_CHOICE=""
+LOG="/tmp/sa-premier-preinstall.log"
+echo "[preinstall] user=$LOGGED_USER date=$(date)" > "$LOG" 2>/dev/null || true
 
-if [ -n "$LOGGED_USER" ] && [ "$LOGGED_USER" != "root" ]; then
-  # osascript als ingelogde user draaien (voor GUI)
-  DISPLAY_CHOICE=$(sudo -u "$LOGGED_USER" osascript <<'OSA' 2>/dev/null || true
+ask_via_osascript() {
+  local uid="$1"
+  local user="$2"
+  # Gebruik launchctl asuser zodat GUI bij de ingelogde user verschijnt, zelfs als pkg als root draait.
+  # Met activate en duidelijke knoppen — moet opvallen tussen de PKG-stappen.
+  launchctl asuser "$uid" sudo -u "$user" osascript <<'OSA' 2>>"$LOG" || true
 try
-  set theOptions to {"☁️ Licht — download bij gebruik (aanbevolen)", "📦 Volledig — alles meteen", "🛠️ Aangepast — alleen Music (standaard)"}
-  set theResult to choose from list theOptions with title "SA Premier — AI-setup" with prompt "Kies hoe je AI-modellen wilt (kan later altijd in de app via 🤖 AI-setup):" default items {"🛠️ Aangepast — alleen Music (standaard)"} OK button name "Volgende" cancel button name "Overslaan"
-  if theResult is false then
-    return "custom: comfy=0,music=1,ollama=0"
+  tell application "System Events"
+    activate
+  end tell
+  set theResult to display dialog "SA Premier — AI-setup" & return & return & "Kies hoe je AI-modellen wilt installeren:" & return & "• Licht: klein (~150 MB), modellen download bij eerste gebruik" & return & "• Volledig: alles meteen (~8–15 GB, alleen als je Full bouwt)" & return & "• Aangepast: alleen Music (standaard, Comfy/Ollama uit)" & return & return & "Je kunt dit later altijd wijzigen in de app via  🤖 AI-setup." buttons {"🛠️ Aangepast", "📦 Volledig", "☁️ Licht"} default button "☁️ Licht" cancel button "🛠️ Aangepast" with title "SA Premier — AI-setup" giving up after 120
+  set btn to button returned of theResult
+  if btn is "☁️ Licht" then
+    return "ondemand"
+  else if btn is "📦 Volledig" then
+    return "full"
   else
-    set sel to item 1 of theResult
-    if sel contains "Licht" then
-      return "ondemand"
-    else if sel contains "Volledig" then
-      return "full"
-    else
-      return "custom: comfy=0,music=1,ollama=0"
-    end if
+    return "custom: comfy=0,music=1,ollama=0"
   end if
-on error
+on error errMsg
   return "custom: comfy=0,music=1,ollama=0"
 end try
 OSA
-)
+}
+
+CHOICE=""
+
+if [ -n "$LOGGED_USER" ] && [ "$LOGGED_USER" != "root" ]; then
+  UID_NUM=$(id -u "$LOGGED_USER" 2>/dev/null || echo "")
+  if [ -n "$UID_NUM" ]; then
+    CHOICE=$(ask_via_osascript "$UID_NUM" "$LOGGED_USER" 2>>"$LOG" | tr -d '\r\n' | head -c 200)
+    echo "[preinstall] osascript result: $CHOICE" >> "$LOG" 2>/dev/null || true
+  fi
+  # Fallback: probeer zonder launchctl asuser als bovenstaand faalde
+  if [ -z "$CHOICE" ] || [ "$CHOICE" = "" ]; then
+    CHOICE=$(sudo -u "$LOGGED_USER" osascript -e 'try
+      tell application "System Events" to activate
+      display dialog "SA Premier — AI-setup" & return & "Kies: Licht / Volledig / Aangepast (alleen Music)" buttons {"🛠️ Aangepast", "📦 Volledig", "☁️ Licht"} default button "☁️ Licht" with title "SA Premier — AI-setup" giving up after 120
+      set btn to button returned of result
+      if btn is "☁️ Licht" then return "ondemand" else if btn is "📦 Volledig" then return "full" else return "custom: comfy=0,music=1,ollama=0"
+    on error
+      return "custom: comfy=0,music=1,ollama=0"
+    end try' 2>>"$LOG" | tr -d '\r\n' | head -c 200 || true)
+  fi
 fi
 
-if [ -z "$DISPLAY_CHOICE" ]; then
-  DISPLAY_CHOICE="$DEFAULT"
+if [ -z "$CHOICE" ]; then
+  CHOICE="$DEFAULT"
+  echo "[preinstall] no GUI, using default $DEFAULT" >> "$LOG" 2>/dev/null || true
 fi
 
-echo -n "$DISPLAY_CHOICE" > "$CHOICE_FILE"
-# Ook direct naar gedeelde plek voor het geval postinstall als andere user draait
-echo -n "$DISPLAY_CHOICE" > "/tmp/sa-premier-ai-choice-installer.txt" 2>/dev/null || true
+# Normaliseer: kan "ondemand"/"full"/"custom: ..." zijn
+CHOICE=$(echo -n "$CHOICE" | tr -d '\r\n' | xargs 2>/dev/null || echo -n "$CHOICE")
+if [ -z "$CHOICE" ]; then CHOICE="$DEFAULT"; fi
+
+echo -n "$CHOICE" > "$CHOICE_FILE" 2>/dev/null || true
+echo -n "$CHOICE" > "/tmp/sa-premier-ai-choice-installer.txt" 2>/dev/null || true
+echo "[preinstall] final choice: $CHOICE" >> "$LOG" 2>/dev/null || true
 exit 0
