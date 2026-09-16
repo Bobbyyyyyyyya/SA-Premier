@@ -1,0 +1,62 @@
+#!/bin/bash
+# SA Premier PKG — postinstall: zet AI-keuze uit preinstall om naar de plekken
+# waar de app hem leest (resources + userData). Ook: zorg dat bestaande installatie
+# wordt bijgewerkt (overschrijven is al gebeurd door productbuild).
+
+set -e
+
+CHOICE_FILE="/tmp/sa-premier-ai-choice.txt"
+CHOICE2="/tmp/sa-premier-ai-choice-installer.txt"
+CHOICE=""
+
+if [ -f "$CHOICE_FILE" ]; then
+  CHOICE="$(cat "$CHOICE_FILE" 2>/dev/null | tr -d '\r\n' | head -c 200)"
+elif [ -f "$CHOICE2" ]; then
+  CHOICE="$(cat "$CHOICE2" 2>/dev/null | tr -d '\r\n' | head -c 200)"
+fi
+
+if [ -z "$CHOICE" ]; then
+  CHOICE="custom: comfy=0,music=1,ollama=0"
+fi
+
+# 1) Schrijf naar app bundle Resources (voor alle users, ook nieuwe)
+#    $2 is de install destination volgens pkg postinstall spec (meestal /)
+#    App staat op $2/Applications/SA Premier.app of /Applications/SA Premier.app
+APP_RES=""
+for base in "$2" "/" ""; do
+  cand="$base/Applications/SA Premier.app/Contents/Resources/installer-choice.txt"
+  # probeer ook $3 variant (pkg spec)
+  if [ -z "$APP_RES" ] && [ -f "$base/Applications/SA Premier.app/Contents/MacOS/SA Premier" ]; then
+    APP_RES="$(dirname "$base/Applications/SA Premier.app/Contents/Resources")/installer-choice.txt"
+    # we hebben de dir, schrijf
+    mkdir -p "$(dirname "$APP_RES")" 2>/dev/null || true
+    echo -n "$CHOICE" > "$APP_RES" 2>/dev/null || true
+  fi
+  # fallback: probeer direct
+  if [ -d "$base/Applications/SA Premier.app/Contents/Resources" ]; then
+    echo -n "$CHOICE" > "$base/Applications/SA Premier.app/Contents/Resources/installer-choice.txt" 2>/dev/null || true
+  fi
+done
+# Extra: als $3 bestaat (productbuild destination)
+if [ -n "$3" ] && [ -d "$3/Applications/SA Premier.app/Contents/Resources" ]; then
+  echo -n "$CHOICE" > "$3/Applications/SA Premier.app/Contents/Resources/installer-choice.txt" 2>/dev/null || true
+fi
+
+# 2) Schrijf ook naar de ingelogde user's Application Support (voor auto-updater / bestaande installatie)
+LOGGED_USER="$(stat -f %Su /dev/console 2>/dev/null || echo "")"
+if [ -n "$LOGGED_USER" ] && [ "$LOGGED_USER" != "root" ]; then
+  USER_HOME=$(eval echo "~$LOGGED_USER" 2>/dev/null || echo "")
+  if [ -n "$USER_HOME" ] && [ -d "$USER_HOME" ]; then
+    UPDIR="$USER_HOME/Library/Application Support/SA Premier"
+    mkdir -p "$UPDIR" 2>/dev/null || true
+    # Schrijf installer-choice voor de app (wordt bij eerste start omgezet naar ai-setup.json)
+    echo -n "$CHOICE" > "$UPDIR/installer-choice.txt" 2>/dev/null || true
+    # Als er al een ai-setup.json is (bestaande SA Studio), update hem niet automatisch overschrijven —
+    # laat bestaande keuze staan. Alleen als hij niet bestaat, zet hem.
+    # (postinstall mag nooit user-data zomaar overschrijven)
+  fi
+fi
+
+# Opruimen tmp (best-effort)
+rm -f "$CHOICE_FILE" "$CHOICE2" 2>/dev/null || true
+exit 0

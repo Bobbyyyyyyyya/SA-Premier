@@ -1,0 +1,48 @@
+#!/bin/bash
+# SA Premier PKG — preinstall: vraag AI-keuze vóór installatie (wizard-gevoel)
+# Dit draait als root tijdens PKG-installatie. We tonen een native macOS dialoog
+# via osascript als GUI beschikbaar is. Keuze wordt naar /tmp geschreven voor postinstall.
+
+set -e
+
+CHOICE_FILE="/tmp/sa-premier-ai-choice.txt"
+# default: custom = alleen Music (zelfde als app defaults)
+DEFAULT="custom: comfy=0,music=1,ollama=0"
+
+# Probeer GUI dialoog te tonen als er een ingelogde user is
+LOGGED_USER="$(stat -f %Su /dev/console 2>/dev/null || echo "")"
+DISPLAY_CHOICE=""
+
+if [ -n "$LOGGED_USER" ] && [ "$LOGGED_USER" != "root" ]; then
+  # osascript als ingelogde user draaien (voor GUI)
+  DISPLAY_CHOICE=$(sudo -u "$LOGGED_USER" osascript <<'OSA' 2>/dev/null || true
+try
+  set theOptions to {"☁️ Licht — download bij gebruik (aanbevolen)", "📦 Volledig — alles meteen", "🛠️ Aangepast — alleen Music (standaard)"}
+  set theResult to choose from list theOptions with title "SA Premier — AI-setup" with prompt "Kies hoe je AI-modellen wilt (kan later altijd in de app via 🤖 AI-setup):" default items {"🛠️ Aangepast — alleen Music (standaard)"} OK button name "Volgende" cancel button name "Overslaan"
+  if theResult is false then
+    return "custom: comfy=0,music=1,ollama=0"
+  else
+    set sel to item 1 of theResult
+    if sel contains "Licht" then
+      return "ondemand"
+    else if sel contains "Volledig" then
+      return "full"
+    else
+      return "custom: comfy=0,music=1,ollama=0"
+    end if
+  end if
+on error
+  return "custom: comfy=0,music=1,ollama=0"
+end try
+OSA
+)
+fi
+
+if [ -z "$DISPLAY_CHOICE" ]; then
+  DISPLAY_CHOICE="$DEFAULT"
+fi
+
+echo -n "$DISPLAY_CHOICE" > "$CHOICE_FILE"
+# Ook direct naar gedeelde plek voor het geval postinstall als andere user draait
+echo -n "$DISPLAY_CHOICE" > "/tmp/sa-premier-ai-choice-installer.txt" 2>/dev/null || true
+exit 0

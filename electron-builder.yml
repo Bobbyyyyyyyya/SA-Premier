@@ -56,7 +56,7 @@ extraResources:
 
 mac:
   category: public.app-category.video
-  # PKG = echte macOS installer-pakket (wizard: welkom → voorwaarden → locatie → installatie)
+  # PKG = echte macOS installer-pakket (wizard: welkom → voorwaarden → locatie → installatie + AI-keuze)
   # DMG = slepen-naar-Programma's. We bieden beide; PKG is het meest "Windows .exe"-achtig.
   target:
     - dmg
@@ -67,6 +67,15 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+
+pkg:
+  # PKG wizard met AI-keuze: preinstall/postinstall tonen native macOS dialoog (osascript)
+  # en schrijven keuze naar installer-choice.txt → app leest bij eerste start.
+  # Werkt ook als bestaande SA Premier wordt bijgewerkt (overschrijft /Applications).
+  scripts: build/pkg-scripts
+  installLocation: /Applications
+  allowAnywhere: false
+  allowCurrentUserHome: false
 
 win:
   # NSIS .exe = Windows-equivalent van PKG: wizard met welkom → voorwaarden → locatie → componenten → installatie

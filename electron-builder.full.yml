@@ -34,18 +34,6 @@ extraResources:
     filter:
       - ffmpeg
       - ffmpeg.exe
-nsis:
-  oneClick: false
-  allowToChangeInstallationDirectory: true
-  perMachine: false
-  createDesktopShortcut: true
-  createStartMenuShortcut: true
-  runAfterFinish: true
-  uninstallDisplayName: SA Premier Full
-  include: build/installer.nsh
-extraMetadata:
-  version: 0.1.0
-
 mac:
   category: public.app-category.video
   target:
@@ -57,6 +45,11 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+pkg:
+  scripts: build/pkg-scripts
+  installLocation: /Applications
+  allowAnywhere: false
+  allowCurrentUserHome: false
 win:
   target:
     - nsis
@@ -68,7 +61,15 @@ linux:
   target:
     - AppImage
     - deb
-
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  runAfterFinish: true
+  uninstallDisplayName: SA Premier Full
+  include: build/installer.nsh
+  warningsAsErrors: false
+extraMetadata:
+  version: 0.1.0
