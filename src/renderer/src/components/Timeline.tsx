@@ -4,8 +4,8 @@ import { clamp, formatTime } from '../lib/format'
 import { importPaths } from '../lib/inspect'
 import type { Asset, Clip, Track } from '../../../shared/types'
 
-const ROW_H = 62
-const RULER_H = 30
+const ROW_H = 54
+const RULER_H = 28
 const MIN_CLIP = 0.1
 
 /* ---------------- helpers ---------------- */
@@ -88,10 +88,11 @@ function Waveform({ seed, muted }: { seed: string; muted?: boolean }): JSX.Eleme
 
 function Filmstrip({ thumbnail }: { thumbnail?: string }): JSX.Element | null {
   if (!thumbnail) return null
+  // Premier-achtig: 3-4 brede film frames, niet 12 dunne
   return (
     <div className="clip-film">
-      {Array.from({ length: 12 }).map((_, i) => (
-        <span key={i} style={{ backgroundImage: `url(${thumbnail})` }} />
+      {Array.from({ length: 4 }).map((_, i) => (
+        <span key={i} style={{ backgroundImage: `url(${thumbnail})`, backgroundPosition: `${(i * 33) % 100}% center` }} />
       ))}
     </div>
   )
@@ -127,7 +128,9 @@ function ClipBox({ clip, asset, pps, selected, dimmed, tracks, snapEnabled }: Cl
 
   useEffect(() => () => cancelAnimationFrame(raf.current), [])
 
+  const trackLocked = tracks.find((t) => t.id === clip.trackId)?.locked
   const onMoveDrag = (e: React.PointerEvent): void => {
+    if (trackLocked) return
     if ((e.target as HTMLElement).closest('.clip-handle')) return
     e.preventDefault()
     e.stopPropagation()
@@ -185,6 +188,7 @@ function ClipBox({ clip, asset, pps, selected, dimmed, tracks, snapEnabled }: Cl
   }
 
   const onTrim = (e: React.PointerEvent, side: 'l' | 'r'): void => {
+    if (trackLocked) return
     e.preventDefault()
     e.stopPropagation()
     pausePlayback()
@@ -363,6 +367,8 @@ function Ruler({
 function TrackHeader({ track, clipCount }: { track: Track; clipCount: number }): JSX.Element {
   const setTrackMuted = useEditorStore((s) => s.setTrackMuted)
   const setTrackHidden = useEditorStore((s) => s.setTrackHidden)
+  const setTrackLocked = useEditorStore((s) => (s as unknown as { setTrackLocked: (id: string, v: boolean) => void }).setTrackLocked ?? (() => null)) as (id: string, v: boolean) => void
+  const setTrackSolo = useEditorStore((s) => (s as unknown as { setTrackSolo: (id: string, v: boolean) => void }).setTrackSolo ?? (() => null)) as (id: string, v: boolean) => void
   const removeTrack = useEditorStore((s) => s.removeTrack)
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(track.name)
@@ -375,46 +381,49 @@ function TrackHeader({ track, clipCount }: { track: Track; clipCount: number }):
     }))
   }
 
+  const locked = !!track.locked
+  const solo = !!track.solo
+
   return (
-    <div className={`tl-track-header ${track.muted ? 'muted' : ''}`} style={{ height: ROW_H }} title={`${track.name} · ${clipCount} clip(s)`}>
-      <span className={`th-kind ${track.kind}`}>{track.kind === 'video' ? 'V' : 'A'}</span>
-      <div className="th-main">
-        {editing ? (
-          <input
-            className="th-edit"
-            autoFocus
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onBlur={commit}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') commit()
-              if (e.key === 'Escape') setEditing(false)
-            }}
-          />
-        ) : (
-          <span className="th-name" onDoubleClick={() => { setName(track.name); setEditing(true) }} title="Dubbelklik om te hernoemen">
-            {track.name}
-          </span>
-        )}
-        <span className="th-sub">{clipCount} {clipCount === 1 ? 'clip' : 'clips'}</span>
+    <div className={`tl-track-header ${track.muted ? 'muted' : ''} ${locked ? 'locked' : ''}`} style={{ height: ROW_H }} title={`${track.name} · ${clipCount} clip(s) — dubbelklik naam om te hernoemen`}>
+      <div className="th-left">
+        <span className={`th-kind ${track.kind}`} title={track.kind === 'video' ? 'Video track' : 'Audio track'}>
+          {track.kind === 'video' ? '▣' : '♪'}
+        </span>
+        <div className="th-main">
+          {editing ? (
+            <input
+              className="th-edit"
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onBlur={commit}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commit()
+                if (e.key === 'Escape') setEditing(false)
+              }}
+            />
+          ) : (
+            <span className="th-name" onDoubleClick={() => { setName(track.name); setEditing(true) }}>
+              {track.name}
+            </span>
+          )}
+          <span className="th-sub">{clipCount} {clipCount === 1 ? 'clip' : 'clips'}</span>
+        </div>
       </div>
-      <div className="th-btns">
-        <button
-          className={track.muted ? 'active warn' : ''}
-          title={track.muted ? 'Unmute (dempen uit)' : 'Mute track'}
-          onClick={() => setTrackMuted(track.id, !track.muted)}
-        >
-          {track.muted ? '✕' : '♪'}
+      <div className="th-controls">
+        <button className={track.hidden ? 'active' : ''} title={track.hidden ? 'Toon (eye)' : 'Verbergen'} onClick={() => setTrackHidden(track.id, !track.hidden)}>
+          {track.hidden ? '◌' : '👁'}
         </button>
-        {track.kind === 'video' && (
-          <button
-            className={track.hidden ? 'active' : ''}
-            title={track.hidden ? 'Toon track' : 'Verberg track'}
-            onClick={() => setTrackHidden(track.id, !track.hidden)}
-          >
-            {track.hidden ? '◌' : '◉'}
-          </button>
-        )}
+        <button className={locked ? 'active warn' : ''} title={locked ? 'Unlock' : 'Lock track'} onClick={() => setTrackLocked(track.id, !locked)}>
+          {locked ? '🔒' : '🔓'}
+        </button>
+        <button className={track.muted ? 'active warn' : ''} title={track.muted ? 'Unmute' : 'Mute'} onClick={() => setTrackMuted(track.id, !track.muted)}>
+          {track.muted ? '🔇' : '🔊'}
+        </button>
+        <button className={solo ? 'active' : ''} title={solo ? 'Solo uit' : 'Solo'} onClick={() => setTrackSolo(track.id, !solo)}>
+          S
+        </button>
         <button className="ghost danger" title="Verwijder track" onClick={() => {
           if (clipCount > 0 && !window.confirm(`Track "${track.name}" met ${clipCount} clip(s) verwijderen?`)) return
           removeTrack(track.id)

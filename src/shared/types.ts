@@ -49,6 +49,8 @@ export interface Track {
   kind: TrackKind
   muted: boolean
   hidden: boolean
+  locked?: boolean
+  solo?: boolean
 }
 
 export interface Clip {

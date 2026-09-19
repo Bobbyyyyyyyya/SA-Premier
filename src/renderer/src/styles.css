@@ -1629,3 +1629,26 @@ select:focus {
 }
 .modal .field input:focus { border-color: var(--accent); }
 
+/* ---------- Premiere-inspired refinements (niet letterlijk AI-kopie) ---------- */
+.timeline { background: #0c0c0d; }
+.tl-headers { width: 200px; background: #1a1a1c; border-right: 1px solid #2a2a2e; }
+.tl-track-header { display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 6px 8px; background: #1e1e20; border-bottom: 1px solid #2a2a2e; }
+.tl-track-header.locked { opacity: 0.55; }
+.th-left { display: flex; align-items: center; gap: 8px; width: 100%; }
+.th-kind { width: 22px; height: 22px; border-radius: 3px; font-size: 11px; flex: none; }
+.th-controls { display: flex; gap: 3px; width: 100%; }
+.th-controls button { padding: 2px 5px; font-size: 10px; min-width: 22px; height: 20px; border-radius: 3px; background: #2a2a2e; border: 1px solid #3a3a3e; }
+.th-controls button.active { background: #3a5a8a; border-color: #4a6da7; color: #fff; }
+.th-controls button.active.warn { background: #6b2a2a; border-color: #8a3a3a; }
+.tl-body { background: #0f0f10; }
+.tl-ruler { background: #1e1e20; border-bottom: 1px solid #2a2a2e; }
+.clip { top: 5px; bottom: 5px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.08); }
+.clip.video { background: #2a2a2e; }
+.clip.audio { background: linear-gradient(180deg, #3b6ea5 0%, #2f5a8a 100%); border-color: #4a7ab8; }
+.clip.audio:nth-child(3n) { background: linear-gradient(180deg, #2d6b4a 0%, #1e5a3c 100%); border-color: #3a7a5a; } /* variatie voor master-achtige track zoals in foto */
+.clip .clip-wave span { background: rgba(255,255,255,0.75); }
+.clip-film { opacity: 0.45; }
+.clip-top { background: linear-gradient(180deg, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.35) 60%, transparent 100%); padding: 2px 6px; }
+.clip-name { font-size: 10px; font-weight: 600; }
+.clip-dur { font-size: 8px; }
+

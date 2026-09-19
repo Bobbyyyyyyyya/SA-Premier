@@ -19,6 +19,8 @@ export interface EditorState {
   removeTrack: (trackId: string) => void
   setTrackMuted: (trackId: string, muted: boolean) => void
   setTrackHidden: (trackId: string, hidden: boolean) => void
+  setTrackLocked: (trackId: string, locked: boolean) => void
+  setTrackSolo: (trackId: string, solo: boolean) => void
   setProjectResolution: (width: number, height: number) => void
   setProjectName: (name: string) => void
 
@@ -99,6 +101,12 @@ export const useEditorStore = create<EditorState>()(
 
     setTrackHidden: (trackId, hidden) =>
       set((s) => ({ tracks: s.tracks.map((t) => (t.id === trackId ? { ...t, hidden } : t)) })),
+
+    setTrackLocked: (trackId: string, locked: boolean) =>
+      set((s) => ({ tracks: s.tracks.map((t) => (t.id === trackId ? { ...t, locked } : t)) })),
+
+    setTrackSolo: (trackId: string, solo: boolean) =>
+      set((s) => ({ tracks: s.tracks.map((t) => (t.id === trackId ? { ...t, solo } : t)) })),
 
     setProjectResolution: (width, height) =>
       set((s) => ({ project: { ...s.project, width, height } })),
