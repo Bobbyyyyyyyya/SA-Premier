@@ -122,13 +122,19 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
     }
 
     if (asset.hasAudio) {
-      const al = 'a' + c.id
-      graph.push(
-        `[${idx}:a]atrim=start=${n(c.sourceStart)}:end=${n(c.sourceStart + c.duration)},` +
-        `asetpts=PTS-STARTPTS,volume=${n(Math.max(0, c.volume))},` +
-        `asetpts=PTS+${n(c.start)}/TB,aformat=sample_rates=48000:channel_layouts=stereo[${al}]`
-      )
-      audioLabels.push(`[${al}]`)
+      // voorkom dubbel geluid: video met hasAudio + aparte audio-clip op zelfde tijd → alleen audio-clip telt (preview mute-logica)
+      const hasSeparate = c.kind === 'video' && clips.some((o) => o.kind === 'audio' && o.assetId === c.assetId && Math.abs(o.start - c.start) < 0.02 && Math.abs(o.duration - c.duration) < 0.05)
+      if (hasSeparate) {
+        // skip: audio komt via de aparte audio-clip
+      } else {
+        const al = 'a' + c.id
+        graph.push(
+          `[${idx}:a]atrim=start=${n(c.sourceStart)}:end=${n(c.sourceStart + c.duration)},` +
+          `asetpts=PTS-STARTPTS,volume=${n(Math.max(0, c.volume))},` +
+          `asetpts=PTS+${n(c.start)}/TB,aformat=sample_rates=48000:channel_layouts=stereo[${al}]`
+        )
+        audioLabels.push(`[${al}]`)
+      }
     }
   }
 

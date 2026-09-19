@@ -182,21 +182,24 @@ export async function importPaths(paths: string[], opts?: { place?: boolean }): 
       if (a.type === 'video' && a.hasAudio) {
         const audioTrackId = s.tracks.find((x) => x.kind === 'audio')?.id
         if (audioTrackId) {
-          const audioClip = {
-            id: uid(),
-            assetId: a.id,
-            assetPath: a.path,
-            trackId: audioTrackId,
-            start: Math.max(0, t),
-            duration: a.duration > 0 ? a.duration : 5,
-            sourceStart: 0,
-            volume: 1,
-            effects: { ...DEFAULT_EFFECTS },
-            transitionIn: null as null,
-            transitionOut: null as null,
-            kind: 'audio' as const
+          const already = useEditorStore.getState().clips.some((c) => c.kind === 'audio' && c.assetId === a.id && Math.abs(c.start - Math.max(0, t)) < 0.02)
+          if (!already) {
+            const audioClip = {
+              id: uid(),
+              assetId: a.id,
+              assetPath: a.path,
+              trackId: audioTrackId,
+              start: Math.max(0, t),
+              duration: a.duration > 0 ? a.duration : 5,
+              sourceStart: 0,
+              volume: 1,
+              effects: { ...DEFAULT_EFFECTS },
+              transitionIn: null as null,
+              transitionOut: null as null,
+              kind: 'audio' as const
+            }
+            useEditorStore.setState((st) => ({ clips: [...st.clips, audioClip] }))
           }
-          useEditorStore.setState((st) => ({ clips: [...st.clips, audioClip] }))
         }
       }
       t += Math.max(a.duration, 0.1)

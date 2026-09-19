@@ -120,7 +120,7 @@ export const useEditorStore = create<EditorState>()(
     setProjectName: (name) => set((s) => ({ project: { ...s.project, name } })),
 
     addClip: (assetId, trackId, start) => {
-      const { assets, tracks } = get()
+      const { assets, tracks, clips } = get()
       const asset = assets.find((a) => a.id === assetId)
       if (!asset) return
       let track = tracks.find((t) => t.id === trackId)
@@ -130,12 +130,16 @@ export const useEditorStore = create<EditorState>()(
         if (!track || track.kind !== 'video') track = tracks.find((t) => t.kind === 'video')
       }
       if (!track) return
+      const roundedStart = Math.max(0, start)
+      // voorkom dubbele clip op zelfde track/tijd/asset (double-play bug)
+      const exists = clips.some((c) => c.assetId === assetId && c.trackId === track!.id && Math.abs(c.start - roundedStart) < 0.02 && Math.abs(c.duration - (asset.duration > 0 ? asset.duration : 5)) < 0.02)
+      if (exists) return
       const clip: Clip = {
         id: uid(),
         assetId: asset.id,
         assetPath: asset.path,
         trackId: track.id,
-        start: Math.max(0, start),
+        start: roundedStart,
         duration: asset.duration > 0 ? asset.duration : 5,
         sourceStart: 0,
         volume: 1,
