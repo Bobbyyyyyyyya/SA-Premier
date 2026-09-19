@@ -75,7 +75,13 @@ export const useEditorStore = create<EditorState>()(
     playing: false,
     zoom: 1,
 
-    addAssets: (assets) => set((s) => ({ assets: [...s.assets, ...assets] })),
+    addAssets: (assets) => set((s) => {
+      // de-dupe op path — voorkomt dubbele saves als zelfde file 2x geïmporteerd wordt
+      const existing = new Set(s.assets.map((a) => a.path))
+      const deduped = assets.filter((a) => !existing.has(a.path))
+      if (!deduped.length) return s
+      return { assets: [...s.assets, ...deduped] }
+    }),
 
     removeAsset: (assetId) =>
       set((s) => ({

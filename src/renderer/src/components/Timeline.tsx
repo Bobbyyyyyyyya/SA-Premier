@@ -65,18 +65,69 @@ function hashStr(s: string): number {
 /* ---------------- waveform / filmstrip ---------------- */
 
 function Waveform({ assetPath, seed, muted }: { assetPath?: string; seed: string; muted?: boolean }): JSX.Element {
-  const [realBars, setRealBars] = useState<number[] | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const [ready, setReady] = useState(false)
+
   useEffect(() => {
-    if (!assetPath) return
+    if (!assetPath || !canvasRef.current) return
     let cancelled = false
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const drawBars = (peaks: number[]): void => {
+      if (cancelled || !canvasRef.current) return
+      const c = canvasRef.current!.getContext('2d')!
+      const W = canvasRef.current!.width
+      const H = canvasRef.current!.height
+      c.clearRect(0, 0, W, H)
+      c.strokeStyle = 'rgba(255,255,255,0.85)'
+      c.lineWidth = 1.2
+      c.lineCap = 'round'
+      c.beginPath()
+      const mid = H / 2
+      for (let i = 0; i < peaks.length; i++) {
+        const x = (i / (peaks.length - 1)) * W
+        const h = peaks[i] * (H * 0.42)
+        if (i === 0) c.moveTo(x, mid - h)
+        else c.lineTo(x, mid - h)
+      }
+      for (let i = peaks.length - 1; i >= 0; i--) {
+        const x = (i / (peaks.length - 1)) * W
+        const h = peaks[i] * (H * 0.42)
+        c.lineTo(x, mid + h)
+      }
+      c.closePath()
+      c.fillStyle = 'rgba(255,255,255,0.18)'
+      c.fill()
+      c.stroke()
+      setReady(true)
+    }
+
+    const drawFallback = (): void => {
+      let h = hashStr(seed)
+      const rnd = (): number => {
+        h = Math.imul(h ^ (h >>> 15), 2246822519)
+        h = Math.imul(h ^ (h >>> 13), 3266489917)
+        h ^= h >>> 16
+        return (h >>> 0) / 4294967295
+      }
+      const peaks = Array.from({ length: 80 }, (_, i) => {
+        const env = 0.35 + 0.65 * Math.abs(Math.sin(i / 12 + h % 10))
+        return 0.12 + rnd() * 0.88 * env
+      })
+      const max = Math.max(...peaks, 0.001)
+      drawBars(peaks.map((v) => v / max))
+    }
+
     const url = mediaUrl(assetPath)
-    // Probeer echte waveform te decoden (Web Audio), fallback is hash-bars
     fetch(url).then((r) => r.arrayBuffer()).then((buf) => {
-      const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
-      return ctx.decodeAudioData(buf.slice(0)).then((decoded) => {
-        if (cancelled) return
+      const ACtx = (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)
+      const ctx2 = new ACtx()
+      return ctx2.decodeAudioData(buf.slice(0)).then((decoded) => {
+        if (cancelled) { ctx2.close().catch(() => null); return }
         const data = decoded.getChannelData(0)
-        const bars = 48
+        const bars = 80
         const step = Math.max(1, Math.floor(data.length / bars))
         const out: number[] = []
         for (let i = 0; i < bars; i++) {
@@ -84,48 +135,67 @@ function Waveform({ assetPath, seed, muted }: { assetPath?: string; seed: string
           const start = i * step
           const end = Math.min(data.length, start + step)
           for (let j = start; j < end; j++) peak = Math.max(peak, Math.abs(data[j]))
-          out.push(0.08 + peak * 0.92)
+          out.push(peak)
         }
-        // normaliseer
         const max = Math.max(...out, 0.001)
-        setRealBars(out.map((v) => v / max))
-        ctx.close().catch(() => null)
-      }).catch(() => null)
-    }).catch(() => null)
+        drawBars(out.map((v) => 0.08 + (v / max) * 0.92))
+        ctx2.close().catch(() => null)
+      }).catch(() => drawFallback())
+    }).catch(() => drawFallback())
+
     return () => { cancelled = true }
-  }, [assetPath])
+  }, [assetPath, seed])
 
-  const fallback = useMemo(() => {
-    let h = hashStr(seed)
-    const rnd = (): number => {
-      h = Math.imul(h ^ (h >>> 15), 2246822519)
-      h = Math.imul(h ^ (h >>> 13), 3266489917)
-      h ^= h >>> 16
-      return (h >>> 0) / 4294967295
-    }
-    return Array.from({ length: 32 }, (_, i) => {
-      const env = 0.35 + 0.65 * Math.abs(Math.sin(i / 5 + h % 10))
-      return 0.15 + rnd() * 0.85 * env
-    })
-  }, [seed])
-
-  const bars = realBars ?? fallback
-  return (
-    <div className="clip-wave" style={{ opacity: muted ? 0.25 : 1 }}>
-      {bars.map((v, i) => (
-        <span key={i} style={{ height: `${Math.round(v * 100)}%` }} />
-      ))}
-    </div>
-  )
+  return <canvas ref={canvasRef} className="clip-wave-canvas" width={200} height={28} style={{ opacity: muted ? 0.25 : 1, display: 'block', width: '100%', height: 28 }} />
 }
 
-function Filmstrip({ thumbnail }: { thumbnail?: string }): JSX.Element | null {
-  if (!thumbnail) return null
-  // Premier-achtig: 3-4 brede film frames, niet 12 dunne
+function Filmstrip({ assetPath, thumbnail }: { assetPath?: string; thumbnail?: string }): JSX.Element {
+  const [frames, setFrames] = useState<string[] | null>(null)
+  useEffect(() => {
+    if (!assetPath) return
+    let cancelled = false
+    const v = document.createElement('video')
+    v.muted = true
+    v.preload = 'auto'
+    v.crossOrigin = 'anonymous'
+    v.src = mediaUrl(assetPath)
+    const caps: string[] = []
+    const captureAt = async (t: number): Promise<void> => {
+      return new Promise((res) => {
+        const onSeek = (): void => {
+          try {
+            const c = document.createElement('canvas')
+            c.width = 160
+            c.height = 90
+            const ctx = c.getContext('2d')
+            if (ctx) { ctx.drawImage(v, 0, 0, c.width, c.height); caps.push(c.toDataURL('image/jpeg', 0.6)) }
+          } catch { /* ignore */ }
+          res()
+        }
+        v.addEventListener('seeked', onSeek, { once: true })
+        try { v.currentTime = t } catch { res() }
+        setTimeout(res, 800)
+      })
+    }
+    v.onloadedmetadata = async (): Promise<void> => {
+      const dur = isFinite(v.duration) ? v.duration : 2
+      for (let i = 0; i < 4; i++) {
+        if (cancelled) break
+        await captureAt(Math.min(dur - 0.1, (dur / 4) * (i + 0.5)))
+      }
+      if (!cancelled && caps.length) setFrames(caps)
+      else if (!cancelled && thumbnail) setFrames([thumbnail])
+    }
+    v.onerror = (): void => { if (!cancelled && thumbnail) setFrames([thumbnail]) }
+    return () => { cancelled = true; try { v.pause(); v.removeAttribute('src'); v.load() } catch { /* noop */ } }
+  }, [assetPath, thumbnail])
+
+  const srcs = frames ?? (thumbnail ? [thumbnail] : [])
+  if (!srcs.length) return <div className="clip-fallback">VIDEO</div>
   return (
     <div className="clip-film">
-      {Array.from({ length: 4 }).map((_, i) => (
-        <span key={i} style={{ backgroundImage: `url(${thumbnail})`, backgroundPosition: `${(i * 33) % 100}% center` }} />
+      {(frames ?? Array.from({ length: 4 }, () => srcs[0])).map((src, i) => (
+        <span key={i} style={{ backgroundImage: `url(${src})` }} />
       ))}
     </div>
   )
@@ -307,7 +377,7 @@ function ClipBox({ clip, asset, pps, selected, dimmed, tracks, snapEnabled }: Cl
       {clip.kind === 'video' && !isText && (
         isImage
           ? <div className="clip-thumb" style={{ backgroundImage: asset ? `url(${mediaUrl(asset.path)})` : undefined, backgroundSize: 'cover', opacity: 0.95 }} />
-          : asset?.thumbnail ? <Filmstrip thumbnail={asset.thumbnail} /> : <div className="clip-fallback">VIDEO</div>
+          : <Filmstrip assetPath={asset?.path} thumbnail={asset?.thumbnail} />
       )}
       {clip.kind === 'audio' && <Waveform assetPath={asset?.path} seed={clip.id + (asset?.id ?? '')} muted={dimmed} />}
       {isText && <div className="clip-thumb text-thumb">{clip.text?.text || 'Text'}</div>}
