@@ -66,7 +66,7 @@ export async function inspectMedia(paths: string[]): Promise<Asset[]> {
           width: info.width,
           height: info.height,
           hasAudio: false,
-          thumbnail: await thumbnail(p),
+          thumbnail: mediaUrl(p),
           isImage: true
         })
         continue

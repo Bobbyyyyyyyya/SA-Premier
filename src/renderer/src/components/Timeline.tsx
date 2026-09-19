@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useEditorStore, selectTotal } from '../store'
 import { clamp, formatTime } from '../lib/format'
 import { importPaths } from '../lib/inspect'
+import { mediaUrl } from '../lib/mediaUrl'
 import type { Asset, Clip, Track } from '../../../shared/types'
 
 const ROW_H = 54
@@ -72,8 +73,8 @@ function Waveform({ seed, muted }: { seed: string; muted?: boolean }): JSX.Eleme
       h ^= h >>> 16
       return (h >>> 0) / 4294967295
     }
-    return Array.from({ length: 64 }, (_, i) => {
-      const env = 0.35 + 0.65 * Math.abs(Math.sin(i / 7 + h % 10))
+    return Array.from({ length: 32 }, (_, i) => {
+      const env = 0.35 + 0.65 * Math.abs(Math.sin(i / 5 + h % 10))
       return 0.15 + rnd() * 0.85 * env
     })
   }, [seed])
@@ -263,7 +264,7 @@ function ClipBox({ clip, asset, pps, selected, dimmed, tracks, snapEnabled }: Cl
   return (
     <div
       className={`clip ${clip.kind} ${selected ? 'selected' : ''} ${dragging ? 'dragging' : ''} ${trimming ? 'trimming' : ''} ${dimmed ? 'dimmed' : ''}`}
-      style={{ left, width }}
+      style={{ left, width, contain: 'layout paint' } as React.CSSProperties}
       onPointerDown={onMoveDrag}
       onDoubleClick={(e) => {
         e.stopPropagation()
@@ -271,8 +272,11 @@ function ClipBox({ clip, asset, pps, selected, dimmed, tracks, snapEnabled }: Cl
       }}
       title={`${label} · ${formatTime(clip.duration)} · dubbelklik om te zoeken`}
     >
-      {clip.kind === 'video' && !isText && <Filmstrip thumbnail={asset?.thumbnail} />}
-      {clip.kind === 'video' && !asset?.thumbnail && !isText && <div className="clip-fallback">VIDEO</div>}
+      {clip.kind === 'video' && !isText && (
+        isImage
+          ? <div className="clip-thumb" style={{ backgroundImage: asset ? `url(${mediaUrl(asset.path)})` : undefined, backgroundSize: 'cover', opacity: 0.95 }} />
+          : asset?.thumbnail ? <Filmstrip thumbnail={asset.thumbnail} /> : <div className="clip-fallback">VIDEO</div>
+      )}
       {clip.kind === 'audio' && <Waveform seed={clip.id + (asset?.id ?? '')} muted={dimmed} />}
       {isText && <div className="clip-thumb text-thumb">{clip.text?.text || 'Text'}</div>}
       <div className="clip-top">

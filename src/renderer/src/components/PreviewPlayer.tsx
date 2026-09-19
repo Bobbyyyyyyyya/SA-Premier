@@ -14,8 +14,9 @@ export default function PreviewPlayer(): JSX.Element {
 
   const project = useEditorStore((s) => s.project)
   const playing = useEditorStore((s) => s.playing)
-  const playhead = useEditorStore((s) => s.playhead)
   const total = useEditorStore(selectTotal)
+  const timeRef = useRef<HTMLSpanElement | null>(null)
+  const scrubRef = useRef<HTMLInputElement | null>(null)
 
   if (!playersRef.current) playersRef.current = new PlayerManager()
 
@@ -49,6 +50,18 @@ export default function PreviewPlayer(): JSX.Element {
     renderFrameAt(useEditorStore.getState().playhead)
   }, [project.width, project.height, renderFrameAt])
 
+  // playhead-tekst zonder React re-render elke 16ms (lag fix)
+  useEffect(() => {
+    const upd = (t: number): void => {
+      if (timeRef.current) timeRef.current.textContent = `${formatTime(t, useEditorStore.getState().project.fps)}`
+      if (scrubRef.current && document.activeElement !== scrubRef.current) {
+        scrubRef.current.value = String(Math.min(t, useEditorStore(selectTotal)))
+      }
+    }
+    upd(useEditorStore.getState().playhead)
+    return useEditorStore.subscribe((s) => s.playhead, upd)
+  }, [])
+
   useEffect(() => {
     if (!playing) return
     let raf = 0
@@ -68,16 +81,21 @@ export default function PreviewPlayer(): JSX.Element {
         return
       }
       useEditorStore.setState({ playhead: t })
-      for (const clip of state.clips) {
-        if (clip.kind === 'text') continue
+      // alleen clips rond playhead syncen (lag fix)
+      const visible = state.clips.filter((c) => c.kind !== 'text' && t >= c.start - 0.5 && t < c.start + c.duration + 0.5)
+      const pausedIds = new Set(state.clips.filter((c) => c.kind !== 'text' && !visible.includes(c)).map((c) => c.id))
+      for (const id of pausedIds) {
+        const el = (players as unknown as { els: Map<string, unknown> }).els?.get(id) as HTMLMediaElement | undefined
+        if (el && !el.paused) try { el.pause() } catch { /* noop */ }
+      }
+      for (const clip of visible) {
         const track = state.tracks.find((x) => x.id === clip.trackId)
         const asset = state.assets.find((a) => a.id === clip.assetId)
         if (!asset) {
           players.removeClip(clip.id)
           continue
         }
-        if (asset) players.element(clip.id, asset, clip.kind)
-        // if video has separate audio clip, mute the video element to avoid double audio
+        players.element(clip.id, asset, clip.kind)
         let muted = track?.muted ?? false
         if (clip.kind === 'video' && asset?.hasAudio) {
           const hasSeparateAudio = state.clips.some(
@@ -97,7 +115,6 @@ export default function PreviewPlayer(): JSX.Element {
           clip.volume
         )
       }
-      // opgeruimde clips verwijderen uit players
       renderFrameAt(t)
       raf = requestAnimationFrame(tick)
     }
@@ -207,15 +224,16 @@ export default function PreviewPlayer(): JSX.Element {
         </button>
         <div className="scrub">
           <input
+            ref={scrubRef}
             type="range"
             min={0}
             max={Math.max(total, 0.01)}
             step={0.001}
-            value={Math.min(playhead, total)}
+            defaultValue={Math.min(useEditorStore.getState().playhead, total)}
             onChange={(e) => onSeek(+e.target.value)}
           />
           <span className="time">
-            {formatTime(playhead, project.fps)} <span className="total">/ {formatTime(total, project.fps)}</span>
+            <span ref={timeRef}>{formatTime(useEditorStore.getState().playhead, project.fps)}</span> <span className="total">/ {formatTime(total, project.fps)}</span>
           </span>
         </div>
         <div className="vol" title="Master volume">
