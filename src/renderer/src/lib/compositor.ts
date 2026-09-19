@@ -109,13 +109,43 @@ function drawText(
 
 export function renderFrame(ctx: CanvasRenderingContext2D, o: RenderOpts): void {
   const { width, height, time, state, players } = o
+
+  // Zoek eerst of er überhaupt iets te tonen is en of het al decodable is.
+  // Als alles nog aan het seeken is, wis niet naar zwart maar behoud vorige frame (voorkomt zwart flikkeren bij snel scrubben).
+  const videoTracks = state.tracks.filter((t) => t.kind === 'video' && !t.hidden)
+  let hasReady = false
+  for (const track of videoTracks) {
+    for (const clip of state.clips.filter((c) => c.trackId === track.id && (c.kind === 'video' || c.kind === 'text'))) {
+      if (time < clip.start || time >= clip.start + clip.duration) continue
+      if (clip.kind === 'text') { hasReady = true; break }
+      const asset = state.assets.find((a) => a.id === clip.assetId)
+      if (!asset) continue
+      const el = players.element(clip.id, asset, clip.kind)
+      if (el instanceof HTMLImageElement) { if (el.complete && (el as HTMLImageElement).naturalWidth > 0) { hasReady = true; break } }
+      else if (el instanceof HTMLMediaElement) { if (!el.error && el.readyState >= 2 && !el.seeking) { hasReady = true; break } else if (el.readyState >= 1) { hasReady = true; break } }
+    }
+    if (hasReady) break
+  }
+  // Geen ready frame en we zijn aan het scrubben/seeken → behoud vorige canvas (niet naar zwart wissen)
+  const anySeeking = (() => {
+    for (const track of videoTracks) {
+      for (const clip of state.clips.filter((c) => c.trackId === track.id && c.kind === 'video')) {
+        if (time < clip.start || time >= clip.start + clip.duration) continue
+        const asset = state.assets.find((a) => a.id === clip.assetId)
+        if (!asset) continue
+        const el = players.element(clip.id, asset, clip.kind)
+        if (el instanceof HTMLMediaElement && el.seeking) return true
+      }
+    }
+    return false
+  })()
+  if (!hasReady && anySeeking) return
+
   ctx.save()
   ctx.filter = 'none'
   ctx.globalAlpha = 1
   ctx.fillStyle = '#000'
   ctx.fillRect(0, 0, width, height)
-
-  const videoTracks = state.tracks.filter((t) => t.kind === 'video' && !t.hidden)
   for (const track of videoTracks) {
     const clips = state.clips
       .filter((c) => c.trackId === track.id && (c.kind === 'video' || c.kind === 'text'))

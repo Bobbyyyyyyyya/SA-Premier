@@ -163,6 +163,16 @@ export default function PreviewPlayer(): JSX.Element {
           if (asset) players.element(clip.id, asset, clip.kind)
           players.seekTo(clip.id, clip.start, clip.duration, clip.sourceStart, s.playhead, clip.volume, track?.muted ?? false)
         }
+        const vis = s.clips.find((c) => c.kind !== 'text' && s.playhead >= c.start && s.playhead < c.start + c.duration)
+        if (vis) {
+          const a = s.assets.find((x) => x.id === vis.assetId)
+          if (a) {
+            const el = players.element(vis.id, a, vis.kind)
+            if (el instanceof HTMLMediaElement && el.seeking) {
+              el.addEventListener('seeked', () => renderFrameAt(s.playhead), { once: true })
+            }
+          }
+        }
       }
       renderFrameAt(s.playhead)
     })
@@ -182,10 +192,21 @@ export default function PreviewPlayer(): JSX.Element {
         if (asset) players.element(clip.id, asset, clip.kind)
         players.seekTo(clip.id, clip.start, clip.duration, clip.sourceStart, nt, clip.volume, track?.muted ?? false)
       }
+      // wacht op seeked voor zichtbare clip, dan nogmaals renderen (voorkomt zwart)
+      const vis = s.clips.find((c) => c.kind !== 'text' && nt >= c.start && nt < c.start + c.duration)
+      if (vis) {
+        const a = s.assets.find((x) => x.id === vis.assetId)
+        if (a) {
+          const el = players.element(vis.id, a, vis.kind)
+          if (el instanceof HTMLMediaElement && el.seeking) {
+            el.addEventListener('seeked', () => renderFrameAt(nt), { once: true })
+          }
+        }
+      }
     }
     renderFrameAt(nt)
     window.clearTimeout(renderTimer.current)
-    renderTimer.current = window.setTimeout(() => renderFrameAt(nt), 120)
+    renderTimer.current = window.setTimeout(() => renderFrameAt(nt), 180)
   }
 
   const togglePlay = (): void => {
