@@ -55,7 +55,7 @@ export default function PreviewPlayer(): JSX.Element {
     const upd = (t: number): void => {
       if (timeRef.current) timeRef.current.textContent = `${formatTime(t, useEditorStore.getState().project.fps)}`
       if (scrubRef.current && document.activeElement !== scrubRef.current) {
-        scrubRef.current.value = String(Math.min(t, useEditorStore(selectTotal)))
+        scrubRef.current.value = String(Math.min(t, selectTotal(useEditorStore.getState())))
       }
     }
     upd(useEditorStore.getState().playhead)
