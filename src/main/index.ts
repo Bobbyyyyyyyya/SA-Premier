@@ -337,7 +337,53 @@ app.whenReady().then(() => {
     }
     filePath = path.resolve(filePath)
     if (!fs.existsSync(filePath)) return new Response(null, { status: 404 })
-    // Build a properly encoded file:// URL so special chars (+, spaces, etc.) survive
+
+    // Range support voor video scrubbing / snapshot (anders zwart / alleen kleur)
+    const range = request.headers.get('range') || request.headers.get('Range')
+    if (range) {
+      try {
+        const stat = fs.statSync(filePath)
+        const size = stat.size
+        const m = range.match(/bytes=(\d+)-(\d*)/)
+        if (m) {
+          const start = parseInt(m[1], 10)
+          const end = m[2] ? parseInt(m[2], 10) : size - 1
+          const clampedEnd = Math.min(end, size - 1)
+          const chunkSize = clampedEnd - start + 1
+          const stream = fs.createReadStream(filePath, { start, end: clampedEnd })
+          const headers = new Headers()
+          headers.set('Content-Type', 'video/mp4')
+          // Probeer mime te raden via extensie
+          const ext = path.extname(filePath).toLowerCase()
+          if (ext === '.webm') headers.set('Content-Type', 'video/webm')
+          else if (ext === '.mov') headers.set('Content-Type', 'video/quicktime')
+          else if (ext === '.mkv') headers.set('Content-Type', 'video/x-matroska')
+          else if (ext === '.mp3') headers.set('Content-Type', 'audio/mpeg')
+          else if (ext === '.wav') headers.set('Content-Type', 'audio/wav')
+          else if (/\.(png|jpg|jpeg|gif|webp|bmp)$/i.test(ext)) headers.set('Content-Type', 'image/' + ext.slice(1))
+          headers.set('Content-Length', String(chunkSize))
+          headers.set('Content-Range', `bytes ${start}-${clampedEnd}/${size}`)
+          headers.set('Accept-Ranges', 'bytes')
+          headers.set('Access-Control-Allow-Origin', '*')
+          headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS')
+          headers.set('Access-Control-Allow-Headers', '*')
+          headers.set('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges')
+          // Node stream -> Web ReadableStream
+          const webStream = new ReadableStream({
+            start(controller) {
+              stream.on('data', (chunk) => controller.enqueue(chunk))
+              stream.on('end', () => controller.close())
+              stream.on('error', (e) => controller.error(e))
+            },
+            cancel() { try { stream.destroy() } catch { /* noop */ } }
+          })
+          return new Response(webStream as any, { status: 206, headers } as any)
+        }
+      } catch {
+        // fallback naar gewone fetch
+      }
+    }
+
     const fileUrl = 'file://' + filePath.split('/').map((seg) => encodeURIComponent(seg)).join('/')
     const res = await net.fetch(fileUrl)
     const headers = new Headers(res.headers)
@@ -345,6 +391,7 @@ app.whenReady().then(() => {
     headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS')
     headers.set('Access-Control-Allow-Headers', '*')
     headers.set('Access-Control-Expose-Headers', '*')
+    headers.set('Accept-Ranges', 'bytes')
     return new Response(res.body, { status: res.status, statusText: res.statusText, headers })
   })
 
