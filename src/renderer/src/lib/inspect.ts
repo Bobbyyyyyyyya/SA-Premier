@@ -50,6 +50,40 @@ function loadImage(path: string): Promise<{ width: number; height: number } | nu
   })
 }
 
+async function videoSnapshot(path: string): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    const v = document.createElement('video')
+    v.muted = true
+    v.preload = 'auto'
+    v.crossOrigin = 'anonymous'
+    let done = false
+    const finish = (url?: string): void => {
+      if (done) return
+      done = true
+      try { v.pause(); v.removeAttribute('src'); v.load() } catch { /* noop */ }
+      resolve(url)
+    }
+    const to = setTimeout(() => finish(undefined), 8000)
+    v.onloadedmetadata = (): void => {
+      try { v.currentTime = Math.min(0.5, Math.max(0, v.duration * 0.1 || 0.5)) } catch { finish(undefined) }
+    }
+    v.onseeked = (): void => {
+      try {
+        const c = document.createElement('canvas')
+        c.width = 320
+        c.height = Math.round(320 * (v.videoHeight / Math.max(1, v.videoWidth))) || 180
+        const ctx = c.getContext('2d')
+        if (!ctx) return finish(undefined)
+        ctx.drawImage(v, 0, 0, c.width, c.height)
+        clearTimeout(to)
+        finish(c.toDataURL('image/png'))
+      } catch { finish(undefined) }
+    }
+    v.onerror = (): void => { clearTimeout(to); finish(undefined) }
+    v.src = mediaUrl(path)
+  })
+}
+
 export async function inspectMedia(paths: string[]): Promise<Asset[]> {
   const out: Asset[] = []
   for (const p of paths) {
@@ -100,6 +134,7 @@ export async function inspectMedia(paths: string[]): Promise<Asset[]> {
       let thumb: string | undefined
       if (!isAudio && width > 0) {
         thumb = await thumbnail(p)
+        if (!thumb) thumb = await videoSnapshot(p)
       }
 
       out.push({
