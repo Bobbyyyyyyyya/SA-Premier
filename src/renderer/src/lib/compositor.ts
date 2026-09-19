@@ -126,20 +126,18 @@ export function renderFrame(ctx: CanvasRenderingContext2D, o: RenderOpts): void 
     }
     if (hasReady) break
   }
-  // Geen ready frame en we zijn aan het scrubben/seeken → behoud vorige canvas (niet naar zwart wissen)
-  const anySeeking = (() => {
+  // Heeft er überhaupt een clip op dit tijdstip (ook als hij nog niet ready is)?
+  const hasClipAtTime = (() => {
     for (const track of videoTracks) {
-      for (const clip of state.clips.filter((c) => c.trackId === track.id && c.kind === 'video')) {
-        if (time < clip.start || time >= clip.start + clip.duration) continue
-        const asset = state.assets.find((a) => a.id === clip.assetId)
-        if (!asset) continue
-        const el = players.element(clip.id, asset, clip.kind)
-        if (el instanceof HTMLMediaElement && el.seeking) return true
+      for (const clip of state.clips.filter((c) => c.trackId === track.id && (c.kind === 'video' || c.kind === 'text'))) {
+        if (time >= clip.start && time < clip.start + clip.duration) return true
       }
     }
     return false
   })()
-  if (!hasReady && anySeeking) return
+  // Clip aanwezig maar nog niet decodable (seeking/buffering) → behoud vorige frame, niet naar zwart
+  if (hasClipAtTime && !hasReady) return
+  // Geen clip op dit tijdstip (gap) → wel naar zwart (intentioneel)
 
   ctx.save()
   ctx.filter = 'none'

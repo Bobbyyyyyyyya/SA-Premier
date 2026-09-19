@@ -64,8 +64,38 @@ function hashStr(s: string): number {
 
 /* ---------------- waveform / filmstrip ---------------- */
 
-function Waveform({ seed, muted }: { seed: string; muted?: boolean }): JSX.Element {
-  const bars = useMemo(() => {
+function Waveform({ assetPath, seed, muted }: { assetPath?: string; seed: string; muted?: boolean }): JSX.Element {
+  const [realBars, setRealBars] = useState<number[] | null>(null)
+  useEffect(() => {
+    if (!assetPath) return
+    let cancelled = false
+    const url = mediaUrl(assetPath)
+    // Probeer echte waveform te decoden (Web Audio), fallback is hash-bars
+    fetch(url).then((r) => r.arrayBuffer()).then((buf) => {
+      const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
+      return ctx.decodeAudioData(buf.slice(0)).then((decoded) => {
+        if (cancelled) return
+        const data = decoded.getChannelData(0)
+        const bars = 48
+        const step = Math.max(1, Math.floor(data.length / bars))
+        const out: number[] = []
+        for (let i = 0; i < bars; i++) {
+          let peak = 0
+          const start = i * step
+          const end = Math.min(data.length, start + step)
+          for (let j = start; j < end; j++) peak = Math.max(peak, Math.abs(data[j]))
+          out.push(0.08 + peak * 0.92)
+        }
+        // normaliseer
+        const max = Math.max(...out, 0.001)
+        setRealBars(out.map((v) => v / max))
+        ctx.close().catch(() => null)
+      }).catch(() => null)
+    }).catch(() => null)
+    return () => { cancelled = true }
+  }, [assetPath])
+
+  const fallback = useMemo(() => {
     let h = hashStr(seed)
     const rnd = (): number => {
       h = Math.imul(h ^ (h >>> 15), 2246822519)
@@ -78,6 +108,8 @@ function Waveform({ seed, muted }: { seed: string; muted?: boolean }): JSX.Eleme
       return 0.15 + rnd() * 0.85 * env
     })
   }, [seed])
+
+  const bars = realBars ?? fallback
   return (
     <div className="clip-wave" style={{ opacity: muted ? 0.25 : 1 }}>
       {bars.map((v, i) => (
@@ -277,7 +309,7 @@ function ClipBox({ clip, asset, pps, selected, dimmed, tracks, snapEnabled }: Cl
           ? <div className="clip-thumb" style={{ backgroundImage: asset ? `url(${mediaUrl(asset.path)})` : undefined, backgroundSize: 'cover', opacity: 0.95 }} />
           : asset?.thumbnail ? <Filmstrip thumbnail={asset.thumbnail} /> : <div className="clip-fallback">VIDEO</div>
       )}
-      {clip.kind === 'audio' && <Waveform seed={clip.id + (asset?.id ?? '')} muted={dimmed} />}
+      {clip.kind === 'audio' && <Waveform assetPath={asset?.path} seed={clip.id + (asset?.id ?? '')} muted={dimmed} />}
       {isText && <div className="clip-thumb text-thumb">{clip.text?.text || 'Text'}</div>}
       <div className="clip-top">
         <span className="clip-name">{label}</span>
