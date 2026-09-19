@@ -150,55 +150,9 @@ function Waveform({ assetPath, seed, muted }: { assetPath?: string; seed: string
 }
 
 function Filmstrip({ assetPath, thumbnail }: { assetPath?: string; thumbnail?: string }): JSX.Element {
-  const [frames, setFrames] = useState<string[] | null>(null)
-  useEffect(() => {
-    if (!assetPath) return
-    let cancelled = false
-    const v = document.createElement('video')
-    v.muted = true
-    v.preload = 'auto'
-    v.crossOrigin = 'anonymous'
-    v.src = mediaUrl(assetPath)
-    const caps: string[] = []
-    const captureAt = async (t: number): Promise<void> => {
-      return new Promise((res) => {
-        const onSeek = (): void => {
-          try {
-            const c = document.createElement('canvas')
-            c.width = 160
-            c.height = 90
-            const ctx = c.getContext('2d')
-            if (ctx) { ctx.drawImage(v, 0, 0, c.width, c.height); caps.push(c.toDataURL('image/jpeg', 0.6)) }
-          } catch { /* ignore */ }
-          res()
-        }
-        v.addEventListener('seeked', onSeek, { once: true })
-        try { v.currentTime = t } catch { res() }
-        setTimeout(res, 800)
-      })
-    }
-    v.onloadedmetadata = async (): Promise<void> => {
-      const dur = isFinite(v.duration) ? v.duration : 2
-      for (let i = 0; i < 4; i++) {
-        if (cancelled) break
-        await captureAt(Math.min(dur - 0.1, (dur / 4) * (i + 0.5)))
-      }
-      if (!cancelled && caps.length) setFrames(caps)
-      else if (!cancelled && thumbnail) setFrames([thumbnail])
-    }
-    v.onerror = (): void => { if (!cancelled && thumbnail) setFrames([thumbnail]) }
-    return () => { cancelled = true; try { v.pause(); v.removeAttribute('src'); v.load() } catch { /* noop */ } }
-  }, [assetPath, thumbnail])
-
-  const srcs = frames ?? (thumbnail ? [thumbnail] : [])
-  if (!srcs.length) return <div className="clip-fallback">VIDEO</div>
-  return (
-    <div className="clip-film">
-      {(frames ?? Array.from({ length: 4 }, () => srcs[0])).map((src, i) => (
-        <span key={i} style={{ backgroundImage: `url(${src})` }} />
-      ))}
-    </div>
-  )
+  const src = thumbnail ?? (assetPath ? mediaUrl(assetPath) : undefined)
+  if (!src) return <div className="clip-fallback">VIDEO</div>
+  return <div className="clip-film single"><span style={{ backgroundImage: `url(${src})` }} /></div>
 }
 
 /* ---------------- clip ---------------- */
