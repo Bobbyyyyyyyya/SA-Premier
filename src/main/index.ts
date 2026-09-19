@@ -349,22 +349,11 @@ app.whenReady().then(() => {
   })
 
   registerIpc()
-  // Alles automatisch opstarten op de achtergrond (niet blokkerend)
+  // Lite: alleen 1x proberen op de achtergrond (geen retry-spam)
+  // Ai-setup staat standaard op custom: alleen Music aan (Comfy/Ollama uit) — respecteert Lite.
   void ai.ensureOllama().catch(() => null)
-  void comfy.ensureComfyUIAsync(30000).catch(() => null)
-  void musicAi.ensureMusicAIAsync(30000).catch(() => null)
-  // Blijf proberen tot ze online zijn (elke 20s, max 10x)
-  let retries = 0
-  const retryTimer = setInterval(() => {
-    retries += 1
-    if (retries > 10) {
-      clearInterval(retryTimer)
-      return
-    }
-    void ai.ensureOllama().catch(() => null)
-    void comfy.ensureComfyUIAsync(8000).catch(() => null)
-    void musicAi.ensureMusicAIAsync(8000).catch(() => null)
-  }, 20000)
+  void comfy.ensureComfyUIAsync(10000).catch(() => null)
+  void musicAi.ensureMusicAIAsync(10000).catch(() => null)
   const win = createWindow()
   setupAutoUpdater(win)
 
