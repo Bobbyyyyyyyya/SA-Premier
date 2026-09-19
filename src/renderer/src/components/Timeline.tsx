@@ -25,7 +25,7 @@ function snapTime(t: number, excludeId?: string, enabled = true): number {
   if (!enabled) return t
   const state = useEditorStore.getState()
   const pps = 60 * state.zoom
-  const threshold = Math.max(4, 8) / pps
+  const threshold = 4 / pps // kleiner → precies op 1s klikken lukt ook bij grote films
   const { edges, playhead } = getSnapTargets(excludeId)
   let best = t
   let bestD = threshold
@@ -38,8 +38,9 @@ function snapTime(t: number, excludeId?: string, enabled = true): number {
   }
   for (const e of edges) check(e)
   check(playhead)
+  // 1s snap alleen als je echt dicht bij hele seconde bent (niet altijd)
+  if (Math.abs(t - Math.round(t)) < threshold * 0.7) check(Math.round(t))
   check(0)
-  check(Math.round(t))
   return best
 }
 
@@ -64,44 +65,53 @@ function hashStr(s: string): number {
 
 /* ---------------- waveform / filmstrip ---------------- */
 
-function Waveform({ assetPath, seed, muted }: { assetPath?: string; seed: string; muted?: boolean }): JSX.Element {
+function Waveform({ assetPath, seed, duration, pps, muted }: { assetPath?: string; seed: string; duration: number; pps: number; muted?: boolean }): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const [ready, setReady] = useState(false)
 
   useEffect(() => {
     if (!assetPath || !canvasRef.current) return
     let cancelled = false
     const canvas = canvasRef.current
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
 
     const drawBars = (peaks: number[]): void => {
       if (cancelled || !canvasRef.current) return
       const c = canvasRef.current!.getContext('2d')!
       const W = canvasRef.current!.width
       const H = canvasRef.current!.height
+      const dpr = window.devicePixelRatio || 1
+      // hi-dpi
+      canvasRef.current!.width = W * dpr
+      canvasRef.current!.height = H * dpr
+      c.setTransform(dpr, 0, 0, dpr, 0, 0)
       c.clearRect(0, 0, W, H)
-      c.strokeStyle = 'rgba(255,255,255,0.85)'
+      c.strokeStyle = 'rgba(255,255,255,0.9)'
       c.lineWidth = 1.2
       c.lineCap = 'round'
+      c.lineJoin = 'round'
       c.beginPath()
       const mid = H / 2
       for (let i = 0; i < peaks.length; i++) {
         const x = (i / (peaks.length - 1)) * W
-        const h = peaks[i] * (H * 0.42)
+        const h = peaks[i] * (H * 0.44)
         if (i === 0) c.moveTo(x, mid - h)
         else c.lineTo(x, mid - h)
       }
       for (let i = peaks.length - 1; i >= 0; i--) {
         const x = (i / (peaks.length - 1)) * W
-        const h = peaks[i] * (H * 0.42)
+        const h = peaks[i] * (H * 0.44)
         c.lineTo(x, mid + h)
       }
       c.closePath()
-      c.fillStyle = 'rgba(255,255,255,0.18)'
+      c.fillStyle = 'rgba(255,255,255,0.16)'
       c.fill()
       c.stroke()
-      setReady(true)
+      // middenlijn voor referentie
+      c.strokeStyle = 'rgba(255,255,255,0.18)'
+      c.lineWidth = 0.7
+      c.beginPath()
+      c.moveTo(0, mid)
+      c.lineTo(W, mid)
+      c.stroke()
     }
 
     const drawFallback = (): void => {
@@ -112,8 +122,10 @@ function Waveform({ assetPath, seed, muted }: { assetPath?: string; seed: string
         h ^= h >>> 16
         return (h >>> 0) / 4294967295
       }
-      const peaks = Array.from({ length: 80 }, (_, i) => {
-        const env = 0.35 + 0.65 * Math.abs(Math.sin(i / 12 + h % 10))
+      const W = canvas.width
+      const bars = Math.max(60, Math.min(140, Math.round((duration * pps) / 6)))
+      const peaks = Array.from({ length: bars }, (_, i) => {
+        const env = 0.35 + 0.65 * Math.abs(Math.sin(i / 9 + h % 10))
         return 0.12 + rnd() * 0.88 * env
       })
       const max = Math.max(...peaks, 0.001)
@@ -127,26 +139,38 @@ function Waveform({ assetPath, seed, muted }: { assetPath?: string; seed: string
       return ctx2.decodeAudioData(buf.slice(0)).then((decoded) => {
         if (cancelled) { ctx2.close().catch(() => null); return }
         const data = decoded.getChannelData(0)
-        const bars = 80
+        // bars schaalt met clip-breedte: grote muziek krijgt meer detail, geen dikke streep
+        const Wpx = Math.max(60, Math.round(duration * pps))
+        const bars = Math.max(70, Math.min(180, Math.round(Wpx / 5)))
         const step = Math.max(1, Math.floor(data.length / bars))
         const out: number[] = []
         for (let i = 0; i < bars; i++) {
-          let peak = 0
+          let sum = 0
           const start = i * step
           const end = Math.min(data.length, start + step)
-          for (let j = start; j < end; j++) peak = Math.max(peak, Math.abs(data[j]))
-          out.push(peak)
+          let peak = 0
+          for (let j = start; j < end; j++) {
+            const v = Math.abs(data[j])
+            peak = Math.max(peak, v)
+            sum += v * v
+          }
+          const rms = Math.sqrt(sum / Math.max(1, end - start))
+          // mix peak + rms + log curve → bij grote/luide nummers blijft variatie zichtbaar ipv dikke streep
+          const shaped = Math.pow(0.6 * peak + 0.4 * rms, 0.55)
+          out.push(shaped)
         }
         const max = Math.max(...out, 0.001)
-        drawBars(out.map((v) => 0.08 + (v / max) * 0.92))
+        const min = Math.min(...out)
+        const range = Math.max(0.001, max - min)
+        drawBars(out.map((v) => 0.08 + ((v - min) / range) * 0.92))
         ctx2.close().catch(() => null)
       }).catch(() => drawFallback())
     }).catch(() => drawFallback())
 
     return () => { cancelled = true }
-  }, [assetPath, seed])
+  }, [assetPath, seed, duration, pps])
 
-  return <canvas ref={canvasRef} className="clip-wave-canvas" width={200} height={28} style={{ opacity: muted ? 0.25 : 1, display: 'block', width: '100%', height: 28 }} />
+  return <canvas ref={canvasRef} className="clip-wave-canvas" width={300} height={32} style={{ opacity: muted ? 0.25 : 1, display: 'block', width: '100%', height: 32 }} />
 }
 
 function Filmstrip({ assetPath, thumbnail }: { assetPath?: string; thumbnail?: string }): JSX.Element {
@@ -333,7 +357,7 @@ function ClipBox({ clip, asset, pps, selected, dimmed, tracks, snapEnabled }: Cl
           ? <div className="clip-thumb" style={{ backgroundImage: asset ? `url(${mediaUrl(asset.path)})` : undefined, backgroundSize: 'cover', opacity: 0.95 }} />
           : <Filmstrip assetPath={asset?.path} thumbnail={asset?.thumbnail} />
       )}
-      {clip.kind === 'audio' && <Waveform assetPath={asset?.path} seed={clip.id + (asset?.id ?? '')} muted={dimmed} />}
+      {clip.kind === 'audio' && <Waveform assetPath={asset?.path} seed={clip.id + (asset?.id ?? '')} duration={clip.duration} pps={pps} muted={dimmed} />}
       {isText && <div className="clip-thumb text-thumb">{clip.text?.text || 'Text'}</div>}
       <div className="clip-top">
         <span className="clip-name">{label}</span>
