@@ -37,6 +37,26 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
 
   const hasProject = clips.length > 0 || assets.length > 0
 
+  // Fix: groepeer recente imports die tegelijk gedaan zijn (binnen 3s) als één project
+  const grouped = (() => {
+    if (!recent.length) return [] as RecentMediaItem[][]
+    const sorted = [...recent].sort((a, b) => b.addedAt - a.addedAt)
+    const groups: RecentMediaItem[][] = []
+    let cur: RecentMediaItem[] = [sorted[0]]
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = sorted[i - 1]
+      const curItem = sorted[i]
+      if (Math.abs(prev.addedAt - curItem.addedAt) < 3500) {
+        cur.push(curItem)
+      } else {
+        groups.push(cur)
+        cur = [curItem]
+      }
+    }
+    groups.push(cur)
+    return groups
+  })()
+
   return (
     <div className="home home--light">
       <div className="home-hero">
@@ -152,20 +172,39 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
               )}
             </div>
           </div>
-          {recent.length === 0 ? (
+          {grouped.length === 0 ? (
             <div className="home-empty">Nog geen recente media. Importeer video, foto of audio om te beginnen.</div>
           ) : (
             <div className="recent-grid recent-grid--light">
-              {recent.map((r) => (
-                <div key={r.path} className="recent-card recent-card--light" title={r.path}>
-                  <div className="recent-thumb recent-thumb--light" style={{ backgroundImage: r.thumbnail ? `url(${r.thumbnail})` : `url(${mediaUrl(r.path)})` }} onClick={() => void openSingle(r.path)}>
-                    {!r.thumbnail && <span className="recent-thumb-fallback">{r.type === 'audio' ? '♪' : '🎬'}</span>}
-                    {opening === r.path && <div className="recent-opening">Opening…</div>}
-                    <button className="recent-add" title="Voeg toe aan huidig project (ipv nieuw)" onClick={(e) => { e.stopPropagation(); void openRecent([r.path]) }}>+ Toevoegen</button>
+              {grouped.map((g) => {
+                const key = g.map((x) => x.path).join('|')
+                const isGroup = g.length > 1
+                const first = g[0]
+                const title = isGroup ? `${g.length} bestanden — ${g.map((x) => x.name).join(', ')}` : first.path
+                const thumb = first.thumbnail ?? g.find((x) => x.thumbnail)?.thumbnail
+                const openingAny = g.some((x) => opening === x.path)
+                return (
+                  <div key={key} className={`recent-card recent-card--light ${isGroup ? 'group' : ''}`} title={title}>
+                    <div className="recent-thumb recent-thumb--light" style={{ backgroundImage: thumb ? `url(${thumb})` : g.length === 1 ? `url(${mediaUrl(first.path)})` : undefined, backgroundColor: isGroup ? '#f0edea' : undefined }} onClick={() => void openRecent(g.map((x) => x.path))}>
+                      {!thumb && !isGroup && <span className="recent-thumb-fallback">{first.type === 'audio' ? '♪' : '🎬'}</span>}
+                      {isGroup && (
+                        <div className="recent-group-stack">
+                          {g.slice(0, 3).map((x, i) => (
+                            <span key={x.path} className="recent-group-thumb" style={{ backgroundImage: x.thumbnail ? `url(${x.thumbnail})` : `url(${mediaUrl(x.path)})`, zIndex: 3 - i, left: `${i * 10}px`, top: `${i * 6}px` }} />
+                          ))}
+                          {g.length > 3 && <span className="recent-group-more">+{g.length - 3}</span>}
+                        </div>
+                      )}
+                      {openingAny && <div className="recent-opening">Opening…</div>}
+                      <span className="recent-count">{isGroup ? `${g.length} bestanden` : first.type === 'audio' ? 'Audio' : 'Video'}</span>
+                    </div>
+                    <div className="recent-name recent-name--light" title={isGroup ? g.map((x) => x.name).join(' + ') : first.name}>
+                      {isGroup ? `${g.length} × project` : first.name}
+                    </div>
+                    {isGroup && <div className="recent-sub">{g.map((x) => x.name).join(' · ').slice(0, 42)}</div>}
                   </div>
-                  <div className="recent-name recent-name--light" title={r.name}>{r.name}</div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
           <div className="home-foot-hint">Tip: <b>“Alles in één project”</b> fixt je bug — meerdere video’s worden niet meer als losse projecten gezien.</div>
