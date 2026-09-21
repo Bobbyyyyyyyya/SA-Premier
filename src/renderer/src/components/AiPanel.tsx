@@ -322,7 +322,8 @@ export default function AiPanel(): JSX.Element {
                     <button
                       className="model-uninstall"
                       onClick={async () => {
-                        await window.api.comfyUninstall(m.name)
+                        const r = await window.api.comfyUninstall(m.name)
+                        if (!r.ok) alert(r.error ?? 'Verwijderen mislukt')
                         void refreshComfy()
                       }}
                     >
@@ -386,7 +387,8 @@ export default function AiPanel(): JSX.Element {
                     <button
                       className="model-uninstall"
                       onClick={async () => {
-                        await window.api.musicUninstall(m.name)
+                        const r = await window.api.musicUninstall(m.name)
+                        if (!r.ok) alert(r.error ?? 'Verwijderen mislukt')
                         void refreshComfy()
                       }}
                     >
