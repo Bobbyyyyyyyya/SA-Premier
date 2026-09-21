@@ -43,62 +43,68 @@ export default function AiPanel(): JSX.Element {
   const refreshComfy = useCallback(async (): Promise<void> => {
     try {
       const [st, mst, ost] = await Promise.all([
-        window.api.comfyStatus(),
-        window.api.musicStatus(),
-        window.api.aiPing()
+        (window.api as unknown as { comfyStatus?: () => Promise<ComfyStatus> }).comfyStatus?.() ?? Promise.resolve({ available: false } as ComfyStatus),
+        (window.api as unknown as { musicStatus?: () => Promise<MusicStatus> }).musicStatus?.() ?? Promise.resolve({ available: false } as MusicStatus),
+        (window.api as unknown as { aiPing?: () => Promise<{ available: boolean; version?: string }> }).aiPing?.() ?? Promise.resolve({ available: false }),
       ])
       setComfy(st)
       setMusicStatus(mst)
       setOllama(ost)
     } catch {
-      // ignore
+      // ignore — voorkomt crash als preload nog oud is
     }
     try {
-      const list = await window.api.comfyModels()
+      const list = (await (window.api as unknown as { comfyModels?: () => Promise<InstalledModel[]> }).comfyModels?.()) ?? []
       setInstalled(list)
-      setCatalog(await window.api.comfyCatalog())
+      const cat = (await (window.api as unknown as { comfyCatalog?: () => Promise<CatalogModel[]> }).comfyCatalog?.()) ?? []
+      setCatalog(cat)
       setSelected((cur) => (cur && list.some((m) => m.name === cur) ? cur : list[0]?.name ?? ''))
     } catch { /* ignore */ }
     try {
-      const mList = await window.api.musicModels()
+      const mList = (await (window.api as unknown as { musicModels?: () => Promise<InstalledModel[]> }).musicModels?.()) ?? []
       setMusicInstalled(mList)
-      setMusicCatalog(await window.api.musicCatalog())
+      const mc = (await (window.api as unknown as { musicCatalog?: () => Promise<CatalogModel[]> }).musicCatalog?.()) ?? []
+      setMusicCatalog(mc)
       setSelectedMusic((cur) => (cur && mList.some((m) => m.name === cur) ? cur : mList[0]?.name ?? ''))
     } catch { /* ignore */ }
   }, [])
 
   const autoStartAll = useCallback(async (): Promise<void> => {
-    // automatisch opstarten bij openen van het paneel (alleen als nog niet online)
-    const st = await window.api.comfyStatus().catch(() => ({ available: false }) as ComfyStatus)
-    const mst = await window.api.musicStatus().catch(() => ({ available: false }) as MusicStatus)
-    const ost = await window.api.aiPing().catch(() => ({ available: false }))
-    setComfy(st); setMusicStatus(mst); setOllama(ost)
-    if (!ost.available) {
-      setStarting((p) => ({ ...p, ollama: true }))
-      window.api.aiStart().then((r) => {
-        setStarting((p) => ({ ...p, ollama: false }))
-        if (!r.available) setStartError((p) => ({ ...p, ollama: r.error }))
-        else setStartError((p) => ({ ...p, ollama: undefined }))
-        void refreshComfy()
-      }).catch(() => setStarting((p) => ({ ...p, ollama: false })))
-    }
-    if (!st.available) {
-      setStarting((p) => ({ ...p, comfy: true }))
-      window.api.comfyStart().then((r) => {
-        setStarting((p) => ({ ...p, comfy: false }))
-        if (!r.available) setStartError((p) => ({ ...p, comfy: r.error }))
-        else setStartError((p) => ({ ...p, comfy: undefined }))
-        void refreshComfy()
-      }).catch(() => setStarting((p) => ({ ...p, comfy: false })))
-    }
-    if (!mst.available) {
-      setStarting((p) => ({ ...p, music: true }))
-      window.api.musicStart().then((r) => {
-        setStarting((p) => ({ ...p, music: false }))
-        if (!r.available) setStartError((p) => ({ ...p, music: r.error }))
-        else setStartError((p) => ({ ...p, music: undefined }))
-        void refreshComfy()
-      }).catch(() => setStarting((p) => ({ ...p, music: false })))
+    try {
+      const st = await ((window.api as unknown as { comfyStatus?: () => Promise<ComfyStatus> }).comfyStatus?.() ?? Promise.resolve({ available: false } as ComfyStatus)).catch(() => ({ available: false } as ComfyStatus))
+      const mst = await ((window.api as unknown as { musicStatus?: () => Promise<MusicStatus> }).musicStatus?.() ?? Promise.resolve({ available: false } as MusicStatus)).catch(() => ({ available: false } as MusicStatus))
+      const ost = await ((window.api as unknown as { aiPing?: () => Promise<{ available: boolean }> }).aiPing?.() ?? Promise.resolve({ available: false } as { available: boolean })).catch(() => ({ available: false }))
+      setComfy(st as ComfyStatus); setMusicStatus(mst as MusicStatus); setOllama(ost as { available: boolean })
+      const canStart = (k: string): boolean => typeof (window.api as unknown as Record<string, unknown>)[k] === 'function'
+      if (!ost.available && canStart('aiStart')) {
+        setStarting((p) => ({ ...p, ollama: true }))
+        ;(window.api as unknown as { aiStart: () => Promise<{ available: boolean; error?: string }> }).aiStart().then((r) => {
+          setStarting((p) => ({ ...p, ollama: false }))
+          if (!r.available) setStartError((p) => ({ ...p, ollama: r.error }))
+          else setStartError((p) => ({ ...p, ollama: undefined }))
+          void refreshComfy()
+        }).catch(() => setStarting((p) => ({ ...p, ollama: false })))
+      }
+      if (!(st as ComfyStatus).available && canStart('comfyStart')) {
+        setStarting((p) => ({ ...p, comfy: true }))
+        ;(window.api as unknown as { comfyStart: () => Promise<{ available: boolean; error?: string }> }).comfyStart().then((r) => {
+          setStarting((p) => ({ ...p, comfy: false }))
+          if (!r.available) setStartError((p) => ({ ...p, comfy: r.error }))
+          else setStartError((p) => ({ ...p, comfy: undefined }))
+          void refreshComfy()
+        }).catch(() => setStarting((p) => ({ ...p, comfy: false })))
+      }
+      if (!(mst as MusicStatus).available && canStart('musicStart')) {
+        setStarting((p) => ({ ...p, music: true }))
+        ;(window.api as unknown as { musicStart: () => Promise<{ available: boolean; error?: string }> }).musicStart().then((r) => {
+          setStarting((p) => ({ ...p, music: false }))
+          if (!r.available) setStartError((p) => ({ ...p, music: r.error }))
+          else setStartError((p) => ({ ...p, music: undefined }))
+          void refreshComfy()
+        }).catch(() => setStarting((p) => ({ ...p, music: false })))
+      }
+    } catch {
+      // nooit crashen bij openen AI tab
     }
   }, [refreshComfy])
 
@@ -106,9 +112,10 @@ export default function AiPanel(): JSX.Element {
     setStarting((p) => ({ ...p, [which]: true }))
     setStartError((p) => ({ ...p, [which]: undefined }))
     try {
-      const r = which === 'ollama' ? await window.api.aiStart()
-        : which === 'comfy' ? await window.api.comfyStart()
-        : await window.api.musicStart()
+      const api = window.api as unknown as Record<string, (() => Promise<{ available: boolean; error?: string }>) | undefined>
+      const fn = which === 'ollama' ? api['aiStart'] : which === 'comfy' ? api['comfyStart'] : api['musicStart']
+      if (!fn) { setStartError((p) => ({ ...p, [which]: 'Deze build heeft geen auto-start (update via nieuwe pkg/dmg).' })); return }
+      const r = await fn()
       if (!r.available) setStartError((p) => ({ ...p, [which]: r.error ?? 'Starten mislukt.' }))
     } catch (e) {
       setStartError((p) => ({ ...p, [which]: (e as Error).message }))
@@ -121,9 +128,9 @@ export default function AiPanel(): JSX.Element {
   useEffect(() => {
     void refreshComfy()
     void autoStartAll()
-    window.api.aiSetupGet().then((s) => setSetupMode(s.mode)).catch(() => null)
+    ;(window.api as unknown as { aiSetupGet?: () => Promise<{ mode: string }> }).aiSetupGet?.().then((s) => setSetupMode(s.mode)).catch(() => null)
     const onSetupChanged = (): void => {
-      window.api.aiSetupGet().then((s) => setSetupMode(s.mode)).catch(() => null)
+      ;(window.api as unknown as { aiSetupGet?: () => Promise<{ mode: string }> }).aiSetupGet?.().then((s) => setSetupMode(s.mode)).catch(() => null)
       void refreshComfy()
       void autoStartAll()
     }
