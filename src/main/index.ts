@@ -177,27 +177,35 @@ function registerIpc(): void {
     const p = (prompt ?? '').trim()
     const mid = modelId || 'facebook/musicgen-medium'
     if (!event.sender.isDestroyed()) event.sender.send('music-progress', { phase: 'generating', percent: 0 })
-    // try real AI first if music server available
+    // Probeer echte AI, maar val altijd terug op synth zodat beat nooit faalt (user: "werkt niet")
     const st = await musicAi.musicStatus()
     if (st.available) {
       if (!event.sender.isDestroyed()) event.sender.send('music-progress', { phase: 'generating', percent: 10, message: 'Loading AI model (first run takes ~30s)...' })
-      const r = await musicAi.generateMusic(p || 'a happy trap beat', seconds, mid)
-      if (r.ok && r.base64) {
-        const result = { ok: true, name: `ai-${mid.split('/').pop()}-${seconds}s.wav`, base64: r.base64 }
-        if (!event.sender.isDestroyed()) event.sender.send('music-progress', { phase: 'done', percent: 100, result })
-        return result
+      try {
+        const r = await musicAi.generateMusic(p || 'a happy trap beat', seconds, mid)
+        if (r.ok && r.base64) {
+          const result = { ok: true, name: `ai-${mid.split('/').pop()}-${seconds}s.wav`, base64: r.base64 }
+          if (!event.sender.isDestroyed()) event.sender.send('music-progress', { phase: 'done', percent: 100, result })
+          return result
+        }
+        // AI faalde — fallback naar synth i.p.v. error
+        if (!event.sender.isDestroyed()) event.sender.send('music-progress', { phase: 'generating', percent: 40, message: `AI failed (${r.error || 'onbekend'}), fallback naar synth...` })
+      } catch (e) {
+        if (!event.sender.isDestroyed()) event.sender.send('music-progress', { phase: 'generating', percent: 40, message: `AI error, fallback naar synth...` })
       }
-      // AI server responded but generation failed — return error instead of silent fallback
-      const errorMsg = r.error || 'AI music generation failed'
-      if (!event.sender.isDestroyed()) event.sender.send('music-progress', { phase: 'error', error: errorMsg })
-      return { ok: false, error: errorMsg }
+    } else {
+      if (!event.sender.isDestroyed()) event.sender.send('music-progress', { phase: 'generating', percent: 30, message: 'MusicGen offline, using synth...' })
     }
-    // server not available — fall back to synth
-    if (!event.sender.isDestroyed()) event.sender.send('music-progress', { phase: 'generating', percent: 50, message: 'MusicGen offline, using synth...' })
-    const { wav, name } = ai.generateBeat(seconds, bpm, p)
-    const result = { ok: true, name, base64: wav.toString('base64') }
-    if (!event.sender.isDestroyed()) event.sender.send('music-progress', { phase: 'done', percent: 100, result })
-    return result
+    try {
+      const { wav, name } = ai.generateBeat(seconds, bpm, p)
+      const result = { ok: true, name, base64: wav.toString('base64') }
+      if (!event.sender.isDestroyed()) event.sender.send('music-progress', { phase: 'done', percent: 100, result })
+      return result
+    } catch (e) {
+      const msg = (e as Error).message
+      if (!event.sender.isDestroyed()) event.sender.send('music-progress', { phase: 'error', error: msg })
+      return { ok: false, error: msg }
+    }
   })
 
   ipcMain.handle('ai-save-image', async (event, dataUrl: string, defName: string) => {
