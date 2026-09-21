@@ -475,9 +475,23 @@ export async function installCheckpoint(catalog: CatalogModel, onProgress: (p: I
 }
 
 export function uninstallCheckpoint(name: string): { ok: boolean; error?: string } {
+  // bundled modellen (Full-build) zitten in resources en zijn niet te verwijderen — alleen uit te schakelen via AI-setup
+  try {
+    const bundled = (() => {
+      try { const s = require('./ai-setup') as typeof import('./ai-setup'); return s.listBundledCheckpoints().some((b) => b.name === name) } catch { return false }
+    })()
+    if (bundled && !fs.existsSync(path.join(installedDir(), name))) {
+      return { ok: false, error: 'Bundled model (Full-build) — kan niet verwijderd worden, zet uit via AI-setup → Aangepast.' }
+    }
+  } catch { /* ignore */ }
   const fp = path.join(installedDir(), name)
   try {
     if (fs.existsSync(fp)) fs.unlinkSync(fp)
+    else {
+      // probeer ook via absolute pad (soms staat hij in userData/resources)
+      const alt = path.join(installedDir(), path.basename(name))
+      if (fs.existsSync(alt)) fs.unlinkSync(alt)
+    }
     return { ok: true }
   } catch (e) {
     return { ok: false, error: (e as Error).message }
