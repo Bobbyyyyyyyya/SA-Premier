@@ -76,43 +76,52 @@ function Waveform({ assetPath, seed, duration, pps, muted }: { assetPath?: strin
     const drawBars = (peaks: number[]): void => {
       if (cancelled || !canvasRef.current) return
       const c = canvasRef.current!.getContext('2d')!
-      const W = canvasRef.current!.width
-      const H = canvasRef.current!.height
+      // canvas is al op juiste W/H gezet (zie hieronder)
+      const W = canvasRef.current!.width / (window.devicePixelRatio || 1)
+      const H = canvasRef.current!.height / (window.devicePixelRatio || 1)
       const dpr = window.devicePixelRatio || 1
-      // hi-dpi
-      canvasRef.current!.width = W * dpr
-      canvasRef.current!.height = H * dpr
       c.setTransform(dpr, 0, 0, dpr, 0, 0)
       c.clearRect(0, 0, W, H)
-      c.strokeStyle = 'rgba(255,255,255,0.9)'
-      c.lineWidth = 1.2
+      c.strokeStyle = 'rgba(255,255,255,0.92)'
+      c.lineWidth = 1.1
       c.lineCap = 'round'
       c.lineJoin = 'round'
       c.beginPath()
       const mid = H / 2
       for (let i = 0; i < peaks.length; i++) {
         const x = (i / (peaks.length - 1)) * W
-        const h = peaks[i] * (H * 0.44)
+        const h = peaks[i] * (H * 0.46)
         if (i === 0) c.moveTo(x, mid - h)
         else c.lineTo(x, mid - h)
       }
       for (let i = peaks.length - 1; i >= 0; i--) {
         const x = (i / (peaks.length - 1)) * W
-        const h = peaks[i] * (H * 0.44)
+        const h = peaks[i] * (H * 0.46)
         c.lineTo(x, mid + h)
       }
       c.closePath()
-      c.fillStyle = 'rgba(255,255,255,0.16)'
+      c.fillStyle = 'rgba(255,255,255,0.18)'
       c.fill()
       c.stroke()
-      // middenlijn voor referentie
-      c.strokeStyle = 'rgba(255,255,255,0.18)'
-      c.lineWidth = 0.7
+      c.strokeStyle = 'rgba(255,255,255,0.2)'
+      c.lineWidth = 0.6
       c.beginPath()
       c.moveTo(0, mid)
       c.lineTo(W, mid)
       c.stroke()
     }
+
+    // W en bars schalen met clip-breedte zodat grote nummers niet 1 dikke streep worden
+    const Wpx = Math.max(80, Math.round(duration * pps))
+    const bars = Math.max(90, Math.min(600, Math.round((duration * 18))))
+    // canvas breedte = clip-breedte in CSS pixels, maar gecapped op 1200 voor performance
+    const canvasW = Math.max(120, Math.min(1200, Wpx))
+    const canvasH = 32
+    const dpr = window.devicePixelRatio || 1
+    canvas.width = canvasW * dpr
+    canvas.height = canvasH * dpr
+    canvas.style.width = '100%'
+    canvas.style.height = '32px'
 
     const drawFallback = (): void => {
       let h = hashStr(seed)
@@ -122,9 +131,7 @@ function Waveform({ assetPath, seed, duration, pps, muted }: { assetPath?: strin
         h ^= h >>> 16
         return (h >>> 0) / 4294967295
       }
-      const W = canvas.width
-      const bars = Math.max(60, Math.min(140, Math.round((duration * pps) / 6)))
-      const peaks = Array.from({ length: bars }, (_, i) => {
+      const peaks = Array.from({ length: Math.min(bars, 200) }, (_, i) => {
         const env = 0.35 + 0.65 * Math.abs(Math.sin(i / 9 + h % 10))
         return 0.12 + rnd() * 0.88 * env
       })
@@ -139,30 +146,30 @@ function Waveform({ assetPath, seed, duration, pps, muted }: { assetPath?: strin
       return ctx2.decodeAudioData(buf.slice(0)).then((decoded) => {
         if (cancelled) { ctx2.close().catch(() => null); return }
         const data = decoded.getChannelData(0)
-        // bars schaalt met clip-breedte: grote muziek krijgt meer detail, geen dikke streep
-        const Wpx = Math.max(60, Math.round(duration * pps))
-        const bars = Math.max(70, Math.min(180, Math.round(Wpx / 5)))
         const step = Math.max(1, Math.floor(data.length / bars))
         const out: number[] = []
         for (let i = 0; i < bars; i++) {
-          let sum = 0
-          const start = i * step
-          const end = Math.min(data.length, start + step)
+          const center = Math.floor((i + 0.5) * data.length / bars)
+          const win = Math.max(1, Math.floor(step * 0.35))
+          const start = Math.max(0, center - win)
+          const end = Math.min(data.length, center + win)
           let peak = 0
+          let sum = 0
           for (let j = start; j < end; j++) {
             const v = Math.abs(data[j])
             peak = Math.max(peak, v)
             sum += v * v
           }
           const rms = Math.sqrt(sum / Math.max(1, end - start))
-          // mix peak + rms + log curve → bij grote/luide nummers blijft variatie zichtbaar ipv dikke streep
-          const shaped = Math.pow(0.6 * peak + 0.4 * rms, 0.55)
+          // dB-achtige curve + mix: ook bij grote/luide nummers blijft variatie zichtbaar ipv dikke streep
+          const shaped = Math.pow(0.55 * peak + 0.45 * rms, 0.48)
           out.push(shaped)
         }
         const max = Math.max(...out, 0.001)
         const min = Math.min(...out)
-        const range = Math.max(0.001, max - min)
-        drawBars(out.map((v) => 0.08 + ((v - min) / range) * 0.92))
+        const range = Math.max(0.02, max - min)
+        // niet naar 0-1 normaliseren op basis van min-max alleen, maar met floor zodat stiltes echt dun zijn
+        drawBars(out.map((v) => 0.06 + ((v - min) / range) * 0.94))
         ctx2.close().catch(() => null)
       }).catch(() => drawFallback())
     }).catch(() => drawFallback())
@@ -170,7 +177,7 @@ function Waveform({ assetPath, seed, duration, pps, muted }: { assetPath?: strin
     return () => { cancelled = true }
   }, [assetPath, seed, duration, pps])
 
-  return <canvas ref={canvasRef} className="clip-wave-canvas" width={300} height={32} style={{ opacity: muted ? 0.25 : 1, display: 'block', width: '100%', height: 32 }} />
+  return <canvas ref={canvasRef} className="clip-wave-canvas" style={{ opacity: muted ? 0.25 : 1, display: 'block', width: '100%', height: 32 }} />
 }
 
 function Filmstrip({ assetPath, thumbnail }: { assetPath?: string; thumbnail?: string }): JSX.Element {
