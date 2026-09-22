@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { IconBox, IconCloud, IconTool, IconMusic, IconPalette } from './icons'
 import { importPaths } from '../lib/inspect'
 import type { AiImageProgress, AiMusicProgress, CatalogModel, ComfyStatus, ComfyImageResult, InstallProgress, InstalledModel } from '../../../shared/types'
 import type { MusicStatus } from '../../../shared/types'
@@ -251,7 +252,7 @@ export default function AiPanel(): JSX.Element {
     <div className="ai-panel">
       <div className="ai-status" style={{ justifyContent: 'space-between' }}>
         <span>
-          AI-pakket: <b>{setupMode === 'full' ? '📦 Volledig (meegeleverd)' : setupMode === 'custom' ? '🛠️ Aangepast' : '☁️ Licht (download bij gebruik)'}</b>
+          AI-pakket: <b>{setupMode === 'full' ? <><span style={{display:"inline-flex",verticalAlign:"middle",marginRight:4}}><IconBox size={12} /></span> Volledig (meegeleverd)</> : setupMode === 'custom' ? <><span style={{display:"inline-flex",verticalAlign:"middle",marginRight:4}}><IconTool size={12} /></span> Aangepast</> : <><span style={{display:"inline-flex",verticalAlign:"middle",marginRight:4}}><IconCloud size={12} /></span> Licht (download bij gebruik)</>}</b>
         </span>
         <button onClick={() => window.dispatchEvent(new Event('open-ai-setup'))} title="Wijzig of AI meegeleverd of gedownload wordt">
           Wijzig…
@@ -317,7 +318,7 @@ export default function AiPanel(): JSX.Element {
 
         {(modelFilter === 'all' || modelFilter === 'image') && (
           <div className="models-group">
-            <div className="models-group-title">📷 Photo — ComfyUI (SD1.5/SDXL)</div>
+            <div className="models-group-title"><span style={{display:"inline-flex",verticalAlign:"middle",marginRight:6}}><IconPalette size={14} /></span> Photo — ComfyUI (SD1.5/SDXL)</div>
             {installed.length > 0 && (
               <div className="installed-grid">
                 {installed.map((m) => (
@@ -382,7 +383,7 @@ export default function AiPanel(): JSX.Element {
 
         {(modelFilter === 'all' || modelFilter === 'music') && (
           <div className="models-group" style={{ marginTop: 14 }}>
-            <div className="models-group-title">🎵 Music — Beat Styles</div>
+            <div className="models-group-title"><span style={{display:"inline-flex",verticalAlign:"middle",marginRight:6}}><IconMusic size={14} /></span> Music — Beat Styles</div>
             {musicInstalled.length > 0 && (
               <div className="installed-grid">
                 {musicInstalled.map((m) => (

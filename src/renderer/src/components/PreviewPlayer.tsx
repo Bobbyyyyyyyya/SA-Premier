@@ -3,6 +3,7 @@ import { useEditorStore, selectTotal } from '../store'
 import { renderFrame } from '../lib/compositor'
 import { PlayerManager } from '../lib/player'
 import { formatTime } from '../lib/format'
+import { IconMute, IconVolume, IconVolumeLow } from './icons'
 
 export default function PreviewPlayer(): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -263,7 +264,7 @@ export default function PreviewPlayer(): JSX.Element {
             onClick={() => setMasterMuted(!masterMuted)}
             title={masterMuted ? 'Unmute' : 'Mute'}
           >
-            {masterMuted || masterVol <= 0 ? '🔇' : masterVol < 0.5 ? '🔈' : '🔊'}
+            {masterMuted || masterVol <= 0 ? <IconMute size={14} /> : masterVol < 0.5 ? <IconVolumeLow size={14} /> : <IconVolume size={14} />}
           </button>
           <input
             type="range"

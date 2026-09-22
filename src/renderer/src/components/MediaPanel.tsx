@@ -1,3 +1,4 @@
+import { IconSpeaker } from './icons'
 import { useState } from 'react'
 import { useEditorStore } from '../store'
 import { importFiles, importPaths } from '../lib/inspect'
@@ -123,7 +124,7 @@ export default function MediaPanel(): JSX.Element {
                         ? `${a.width}x${a.height}`
                         : `${a.width}x${a.height}`}{' '}
                     · {formatClock(a.duration)}
-                    {a.type === 'video' && a.hasAudio ? ' · 🔊' : ''}
+                    {a.type === 'video' && a.hasAudio && <span style={{ display: 'inline-flex', verticalAlign: 'middle', marginLeft: 4 }}><IconSpeaker size={10} /></span>}
                   </div>
                   {a.type === 'video' && a.hasAudio && (
                     <div className="btn-row" style={{ marginTop: 4 }}>

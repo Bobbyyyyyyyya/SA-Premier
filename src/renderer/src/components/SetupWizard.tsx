@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { IconPalette, IconMusic, IconChat, IconRobot, IconCloud, IconBox, IconTool } from './icons'
 
 type Mode = 'ondemand' | 'full' | 'custom'
 
@@ -14,21 +15,21 @@ interface SetupState {
 const ENGINE_INFO = [
   {
     key: 'comfy' as const,
-    icon: '🎨',
+    icon: IconPalette,
     name: 'ComfyUI foto-modellen',
     desc: 'SD 1.5 / Realistic Vision voor AI-foto’s. ~2–7 GB per model.',
     size: '~4 GB'
   },
   {
     key: 'music' as const,
-    icon: '🎵',
+    icon: IconMusic,
     name: 'MusicGen muziek-modellen',
     desc: 'Echte AI-muziek i.p.v. synth. Small 1,2 GB · Medium 3,5 GB · Large 6 GB.',
     size: '~3,5 GB'
   },
   {
     key: 'ollama' as const,
-    icon: '💬',
+    icon: IconChat,
     name: 'Ollama tekst-AI',
     desc: 'Titels, scripts en ideeën genereren. Model wordt bij eerste gebruik gepulled.',
     size: '~2–5 GB'
@@ -85,7 +86,7 @@ export default function SetupWizard({ open, onClose }: { open: boolean; onClose:
   return (
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ width: 560 }}>
-        <h3>🤖 AI-setup — jouw keuze</h3>
+        <h3><span style={{ display: 'inline-flex', verticalAlign: 'middle', marginRight: 6 }}><IconRobot size={18} /></span>AI-setup — jouw keuze</h3>
         {loading ? (
           <div className="progress-note">Laden…</div>
         ) : (
@@ -105,7 +106,7 @@ export default function SetupWizard({ open, onClose }: { open: boolean; onClose:
                 style={{ cursor: 'pointer' }}
               >
                 <div className="catalog-badge">Aanbevolen · ~150 MB download</div>
-                <div className="catalog-name">☁️ Licht — download bij gebruik</div>
+                <div className="catalog-name"><span style={{ display: 'inline-flex', verticalAlign: 'middle', marginRight: 6 }}><IconCloud size={14} /></span>Licht — download bij gebruik</div>
                 <div className="catalog-desc">
                   Kleine app-download. AI-engines starten automatisch; modellen worden pas gedownload als je ze
                   echt gebruikt (ComfyUI, MusicGen, Ollama). Beste voor de meeste users.
@@ -117,7 +118,7 @@ export default function SetupWizard({ open, onClose }: { open: boolean; onClose:
                 style={{ cursor: 'pointer' }}
               >
                 <div className="catalog-badge">Offline · ~8–15 GB download</div>
-                <div className="catalog-name">📦 Volledig — alles in de app</div>
+                <div className="catalog-name"><span style={{ display: 'inline-flex', verticalAlign: 'middle', marginRight: 6 }}><IconBox size={14} /></span>Volledig — alles in de app</div>
                 <div className="catalog-desc">
                   Grote download (Full-installer), daarna alles offline: modellen zitten in de app
                   onder <code>resources/models</code>. Geen wachttijd bij eerste gebruik. Ideaal voor studio’s /
@@ -130,16 +131,18 @@ export default function SetupWizard({ open, onClose }: { open: boolean; onClose:
                 style={{ cursor: 'pointer' }}
               >
                 <div className="catalog-badge">Zelf kiezen</div>
-                <div className="catalog-name">🛠️ Aangepast</div>
+                <div className="catalog-name"><span style={{ display: 'inline-flex', verticalAlign: 'middle', marginRight: 6 }}><IconTool size={14} /></span>Aangepast</div>
                 <div className="catalog-desc">Kies per engine wat je wilt. Alleen foto-AI? Alleen muziek? Of helemaal geen AI.</div>
               </div>
             </div>
 
             {mode === 'custom' && (
               <div style={{ marginTop: 10 }}>
-                {ENGINE_INFO.map((e) => (
+                {ENGINE_INFO.map((e) => {
+                  const Ico = e.icon as React.ComponentType<{ size?: number }>
+                  return (
                   <div key={e.key} className="model-row">
-                    <span style={{ fontSize: 18 }}>{e.icon}</span>
+                    <span style={{ display: 'inline-flex' }}><Ico size={18} /></span>
                     <div className="model-info">
                       <div className="model-name">{e.name} <span className="catalog-size">{e.size}</span></div>
                       <div className="model-size">{e.desc}</div>
@@ -151,7 +154,8 @@ export default function SetupWizard({ open, onClose }: { open: boolean; onClose:
                       {effFlags[e.key] ? 'Aan ✓' : 'Uit'}
                     </button>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )}
 

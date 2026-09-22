@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { IconRobot, IconPalette, IconMusic, IconBox } from './icons'
 import type { RecentMediaItem } from '../../../shared/types'
 import { importPaths, importFiles } from '../lib/inspect'
 import { mediaUrl } from '../lib/mediaUrl'
@@ -97,7 +98,7 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
               </span>
             </button>
             <button className="home-cta ghost" onClick={() => window.dispatchEvent(new Event('open-ai-setup'))}>
-              <span className="cta-icon">🤖</span>
+              <span className="cta-icon"><IconRobot size={18} /></span>
               <span>
                 <b>AI-setup</b>
                 <i>Licht / Volledig / Aangepast</i>
@@ -130,7 +131,7 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
                 <div className="project-assets">
                   {assets.slice(0, 6).map((a) => (
                     <span key={a.id} className="project-asset-dot" title={a.name} style={a.thumbnail ? { backgroundImage: `url(${a.thumbnail})` } : {}}>
-                      {!a.thumbnail && (a.isImage ? '🖼' : a.type === 'audio' ? '♪' : '🎬')}
+                      {!a.thumbnail && (a.isImage ? <IconPalette size={12} /> : a.type === 'audio' ? <IconMusic size={12} /> : <IconBox size={12} />)}
                     </span>
                   ))}
                   {assets.length > 6 && <span className="project-more">+{assets.length - 6}</span>}
@@ -147,7 +148,7 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
             </div>
           ) : (
             <div className="project-card project-card--empty">
-              <div className="project-empty-icon">🎬</div>
+              <div className="project-empty-icon"><IconBox size={32} /></div>
               <div>
                 <div className="project-empty-title">Nog geen project</div>
                 <div className="project-empty-sub">Importeer meerdere video’s tegelijk — ze komen samen in één timeline. Of start met <b>Nieuw project</b>.</div>
@@ -186,7 +187,7 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
                 return (
                   <div key={key} className={`recent-card recent-card--light ${isGroup ? 'group' : ''}`} title={title}>
                     <div className="recent-thumb recent-thumb--light" style={{ backgroundImage: thumb ? `url(${thumb})` : g.length === 1 ? `url(${mediaUrl(first.path)})` : undefined, backgroundColor: isGroup ? '#f0edea' : undefined }} onClick={() => void openRecent(g.map((x) => x.path))}>
-                      {!thumb && !isGroup && <span className="recent-thumb-fallback">{first.type === 'audio' ? '♪' : '🎬'}</span>}
+                      {!thumb && !isGroup && <span className="recent-thumb-fallback">{first.type === 'audio' ? <IconMusic size={18} /> : <IconBox size={18} />}</span>}
                       {isGroup && (
                         <div className="recent-group-stack">
                           {g.slice(0, 3).map((x, i) => (

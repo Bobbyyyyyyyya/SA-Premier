@@ -4,6 +4,7 @@ import { clamp, formatTime } from '../lib/format'
 import { importPaths } from '../lib/inspect'
 import { mediaUrl } from '../lib/mediaUrl'
 import type { Asset, Clip, Track } from '../../../shared/types'
+import { IconEye, IconEyeOff, IconLock, IconUnlock, IconVolume, IconMute, IconSnap, IconFollow, IconStart, IconEnd, IconCut, IconCopy, IconTrash, IconPalette, IconMusic, IconBox } from './icons'
 
 const ROW_H = 54
 const RULER_H = 28
@@ -482,7 +483,7 @@ function TrackHeader({ track, clipCount }: { track: Track; clipCount: number }):
     <div className={`tl-track-header ${track.muted ? 'muted' : ''} ${locked ? 'locked' : ''}`} style={{ height: ROW_H }} title={`${track.name} · ${clipCount} clip(s) — dubbelklik naam om te hernoemen`}>
       <div className="th-left">
         <span className={`th-kind ${track.kind}`} title={track.kind === 'video' ? 'Video track' : 'Audio track'}>
-          {track.kind === 'video' ? '▣' : '♪'}
+          {track.kind === 'video' ? <IconBox size={10} /> : <IconMusic size={10} />}
         </span>
         <div className="th-main">
           {editing ? (
@@ -506,14 +507,14 @@ function TrackHeader({ track, clipCount }: { track: Track; clipCount: number }):
         </div>
       </div>
       <div className="th-controls">
-        <button className={track.hidden ? 'active' : ''} title={track.hidden ? 'Toon (eye)' : 'Verbergen'} onClick={() => setTrackHidden(track.id, !track.hidden)}>
-          {track.hidden ? '◌' : '👁'}
+        <button className={track.hidden ? 'active' : ''} title={track.hidden ? 'Toon' : 'Verbergen'} onClick={() => setTrackHidden(track.id, !track.hidden)}>
+          {track.hidden ? <IconEyeOff size={13} /> : <IconEye size={13} />}
         </button>
         <button className={locked ? 'active warn' : ''} title={locked ? 'Unlock' : 'Lock track'} onClick={() => setTrackLocked(track.id, !locked)}>
-          {locked ? '🔒' : '🔓'}
+          {locked ? <IconLock size={13} /> : <IconUnlock size={13} />}
         </button>
         <button className={track.muted ? 'active warn' : ''} title={track.muted ? 'Unmute' : 'Mute'} onClick={() => setTrackMuted(track.id, !track.muted)}>
-          {track.muted ? '🔇' : '🔊'}
+          {track.muted ? <IconMute size={13} /> : <IconVolume size={13} />}
         </button>
         <button className={solo ? 'active' : ''} title={solo ? 'Solo uit' : 'Solo'} onClick={() => setTrackSolo(track.id, !solo)}>
           S
@@ -779,17 +780,17 @@ export default function Timeline(): JSX.Element {
             title={snapEnabled ? 'Snappen aan (klik om uit te zetten)' : 'Snappen uit (klik om aan te zetten)'}
             onClick={() => setSnapEnabled(!snapEnabled)}
           >
-            🧲
+            <IconSnap size={13} />
           </button>
           <button
             className={`tl-btn toggle ${follow ? 'active' : ''}`}
             title={follow ? 'Playhead volgen aan' : 'Playhead volgen uit'}
             onClick={() => setFollow(!follow)}
           >
-            ◎
+            <IconFollow size={13} />
           </button>
-          <button className="tl-btn" title="Naar begin (Home)" onClick={seekStart}>⏮</button>
-          <button className="tl-btn" title="Naar einde (End)" onClick={seekEnd}>⏭</button>
+          <button className="tl-btn" title="Naar begin (Home)" onClick={seekStart}><IconStart size={13} /></button>
+          <button className="tl-btn" title="Naar einde (End)" onClick={seekEnd}><IconEnd size={13} /></button>
         </div>
         <div className="tl-sep" />
         <div className="tl-group">
@@ -800,13 +801,13 @@ export default function Timeline(): JSX.Element {
             + Tekst
           </button>
           <button className="tl-btn" title="Splits geselecteerde clip op playhead (S)" disabled={!selectedClip} onClick={splitSelected}>
-            ✂
+            <IconCut size={13} />
           </button>
           <button className="tl-btn" title="Dupliceer clip (Ctrl+D)" disabled={!selectedClip} onClick={duplicateSelected}>
-            ⧉
+            <IconCopy size={13} />
           </button>
           <button className="tl-btn danger" title="Verwijder clip (Del)" disabled={!selectedClip} onClick={deleteSelected}>
-            🗑
+            <IconTrash size={13} />
           </button>
         </div>
         <div className="tl-sep" />
@@ -845,7 +846,7 @@ export default function Timeline(): JSX.Element {
           {clips.length === 0 && (
             <div className="tl-empty" style={{ width: contentW }}>
               <div className="tl-empty-card">
-                <div className="tl-empty-icon">🎬</div>
+                <div className="tl-empty-icon"><span style={{ display: 'inline-flex' }}><IconBox size={28} /></span></div>
                 <div className="tl-empty-title">Sleep media hierheen om te starten</div>
                 <div className="tl-empty-sub">…of dubbelklik een item in de bibliotheek · + Tekst voor een titel</div>
               </div>
