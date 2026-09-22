@@ -184,10 +184,14 @@ function Waveform({ assetPath, seed, duration, sourceStart, pps, muted }: { asse
   return <canvas ref={canvasRef} className="clip-wave-canvas" style={{ opacity: muted ? 0.25 : 1, display: 'block', width: '100%', height: 32 }} />
 }
 
-function Filmstrip({ assetPath, thumbnail }: { assetPath?: string; thumbnail?: string }): JSX.Element {
-  const src = thumbnail ?? (assetPath ? mediaUrl(assetPath) : undefined)
-  if (!src) return <div className="clip-fallback">VIDEO</div>
-  return <div className="clip-film single"><span style={{ backgroundImage: `url(${src})` }} /></div>
+function Filmstrip({ assetPath, thumbnail, isImage }: { assetPath?: string; thumbnail?: string; isImage?: boolean }): JSX.Element {
+  if (isImage && assetPath) {
+    return <div className="clip-film single"><span style={{ backgroundImage: `url(${mediaUrl(assetPath)})` }} /></div>
+  }
+  if (thumbnail) {
+    return <div className="clip-film single"><span style={{ backgroundImage: `url(${thumbnail})` }} /></div>
+  }
+  return <div className="clip-fallback">VIDEO</div>
 }
 
 /* ---------------- clip ---------------- */
@@ -366,7 +370,7 @@ function ClipBox({ clip, asset, pps, selected, dimmed, tracks, snapEnabled }: Cl
       {clip.kind === 'video' && !isText && (
         isImage
           ? <div className="clip-thumb" style={{ backgroundImage: asset ? `url(${mediaUrl(asset.path)})` : undefined, backgroundSize: 'cover', opacity: 0.95 }} />
-          : <Filmstrip assetPath={asset?.path} thumbnail={asset?.thumbnail} />
+          : <Filmstrip assetPath={asset?.path} thumbnail={asset?.thumbnail} isImage={false} />
       )}
       {clip.kind === 'audio' && <Waveform assetPath={asset?.path} seed={clip.id + (asset?.id ?? '')} duration={clip.duration} sourceStart={clip.sourceStart} pps={pps} muted={dimmed} />}
       {isText && <div className="clip-thumb text-thumb">{clip.text?.text || 'Text'}</div>}
@@ -678,6 +682,16 @@ export default function Timeline(): JSX.Element {
   const contentW = Math.max((total + 30) * pps, 900)
 
   const selectedClip = useMemo(() => clips.find((c) => c.id === selectedClipId) ?? null, [clips, selectedClipId])
+
+  // Zorg dat clips altijd in beeld komen (fix: bij 06:04 totaal stond alles buiten viewport)
+  useEffect(() => {
+    if (!bodyRef.current || !clips.length) return
+    const first = Math.min(...clips.map((c) => c.start))
+    // alleen auto-scrollen als playhead nog op 0 staat en er is nog niet gescrolled
+    if (useEditorStore.getState().playhead === 0 && bodyRef.current.scrollLeft === 0) {
+      bodyRef.current.scrollLeft = Math.max(0, first * pps - 40)
+    }
+  }, [clips, pps])
 
   /* header/body scroll sync */
   useEffect(() => {
