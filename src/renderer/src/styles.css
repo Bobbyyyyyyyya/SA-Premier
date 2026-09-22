@@ -1679,12 +1679,13 @@ button.small { font-size: 11px; padding: 4px 8px; }
   /* absolute + expliciete width/height: canvas is een replaced element,
      met alleen inset zouden browser de intrinsic bitmap-maat pakken */
   position: absolute;
-  left: 4px;
-  top: 14px;
-  width: calc(100% - 8px);
-  height: calc(100% - 17px);
+  left: 3px;
+  top: 3px;
+  width: calc(100% - 6px);
+  height: calc(100% - 6px);
   display: block;
   pointer-events: none;
+  z-index: 1;
 }
 .clip-top {
   position: absolute; left: 0; right: 0; top: 0;
@@ -1692,6 +1693,7 @@ button.small { font-size: 11px; padding: 4px 8px; }
   padding: 3px 7px 8px 7px;
   background: linear-gradient(180deg, rgba(0,0,0,0.55), transparent);
   pointer-events: none; border-radius: 8px 8px 0 0;
+  z-index: 2;
 }
 .clip-name { font-size: 10.5px; font-weight: 700; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.9); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .clip-dur {

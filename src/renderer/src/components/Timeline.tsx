@@ -70,13 +70,20 @@ function Waveform({ assetPath, seed, duration, sourceStart, pps, muted }: { asse
   const peaksRef = useRef<number[] | null>(null)
   const drawRef = useRef<() => void>(() => undefined)
 
-  // teken op de WERKELIJKE clip-maat — geen 1200px-bitmap die gestretched wordt (wordt altijd dun/vervormd)
+  // teken op de WERKELIJKE clip-maat — canvas vult de hele clip, gevulde spiegel-golf (geen dunne lijn)
   const drawBars = (peaks: number[]): void => {
     const el = canvasRef.current
     if (!el) return
-    const rect = el.getBoundingClientRect()
-    const W = Math.max(60, Math.round(rect.width))
-    const H = Math.max(24, Math.round(rect.height))
+    // clientWidth/Height = CSS-layoutmaat; fallback op parent zodat 0-rect nooit dun tekent
+    let W = el.clientWidth
+    let H = el.clientHeight
+    if (W < 20 || H < 12) {
+      const p = el.parentElement
+      W = Math.max(60, (p?.clientWidth ?? 200) - 8)
+      H = Math.max(36, (p?.clientHeight ?? 54) - 6)
+    }
+    W = Math.round(W)
+    H = Math.round(H)
     const dpr = window.devicePixelRatio || 1
     if (el.width !== Math.round(W * dpr) || el.height !== Math.round(H * dpr)) {
       el.width = Math.round(W * dpr)
@@ -87,32 +94,69 @@ function Waveform({ assetPath, seed, duration, sourceStart, pps, muted }: { asse
     c.setTransform(dpr, 0, 0, dpr, 0, 0)
     c.clearRect(0, 0, W, H)
 
-    // verticale balken zoals Premiere — vult de clip, nooit een "dunne lijn"
-    const n = Math.max(24, Math.min(peaks.length, Math.floor(W / 2.5)))
+    const n = Math.max(24, Math.min(peaks.length, Math.floor(W / 2.2)))
     const step = W / n
-    const bw = Math.max(2, Math.min(6, step * 0.62))
+    const bw = Math.max(2, Math.min(8, step * 0.7))
     const max = Math.max(...peaks.slice(0, n), 0.001)
-    c.fillStyle = 'rgba(255,255,255,0.95)'
+
+    // spiegel-golf: gevulde vorm boven+onder middenlijn → leest als volle waveform, nooit "dun"
+    const mid = H / 2
+    const amp = H * 0.5 * 0.98
+    c.beginPath()
     for (let i = 0; i < n; i++) {
-      const v = (peaks[i] ?? 0) / max
-      const h = Math.max(3, v * H * 0.94)
-      const x = i * step + (step - bw) / 2
-      const y = (H - h) / 2
-      const r = Math.min(bw / 2, 2)
-      c.beginPath()
-      if (typeof c.roundRect === 'function') c.roundRect(x, y, bw, h, r)
-      else c.rect(x, y, bw, h)
-      c.fill()
+      const v = Math.max(0.22, (peaks[i] ?? 0) / max) // harde vloer: zelfs stilte ≈ 22% vol
+      const h = v * amp
+      const x = i * step + step / 2
+      if (i === 0) c.moveTo(x, mid - h)
+      else c.lineTo(x, mid - h)
     }
-    c.strokeStyle = 'rgba(255,255,255,0.35)'
+    for (let i = n - 1; i >= 0; i--) {
+      const v = Math.max(0.22, (peaks[i] ?? 0) / max)
+      const h = v * amp
+      const x = i * step + step / 2
+      c.lineTo(x, mid + h)
+    }
+    c.closePath()
+    c.fillStyle = 'rgba(255,255,255,0.92)'
+    c.fill()
+    c.strokeStyle = 'rgba(255,255,255,1)'
+    c.lineWidth = 1.5
+    c.lineJoin = 'round'
+    c.stroke()
+
+    // extra verticale balken in de vorm voor diepte (Premiere-achtig)
+    c.fillStyle = 'rgba(255,255,255,0.55)'
+    for (let i = 0; i < n; i++) {
+      const v = Math.max(0.22, (peaks[i] ?? 0) / max)
+      const h = v * amp
+      const x = i * step + (step - bw) / 2
+      c.fillRect(x, mid - h, bw, h * 2)
+    }
+
+    // middellijn
+    c.strokeStyle = 'rgba(0,0,0,0.35)'
     c.lineWidth = 1
     c.beginPath()
-    c.moveTo(0, H / 2)
-    c.lineTo(W, H / 2)
+    c.moveTo(0, mid)
+    c.lineTo(W, mid)
     c.stroke()
   }
 
+  // meteen een fallback-golf tonen zodat er nooit een lege/dunne clip is tijdens decode
   useEffect(() => {
+    if (!peaksRef.current) {
+      let h = hashStr(seed)
+      const rnd = (): number => {
+        h = Math.imul(h ^ (h >>> 15), 2246822519)
+        h = Math.imul(h ^ (h >>> 13), 3266489917)
+        h ^= h >>> 16
+        return (h >>> 0) / 4294967295
+      }
+      peaksRef.current = Array.from({ length: 240 }, (_, i) => {
+        const env = 0.35 + 0.65 * Math.abs(Math.sin(i / 9 + h % 10))
+        return 0.12 + rnd() * 0.88 * env
+      })
+    }
     drawRef.current = (): void => {
       const p = peaksRef.current
       if (p) drawBars(p)
@@ -123,12 +167,11 @@ function Waveform({ assetPath, seed, duration, sourceStart, pps, muted }: { asse
     const ro = new ResizeObserver(() => drawRef.current())
     ro.observe(el)
     return () => ro.disconnect()
-  }, [pps, duration])
+  }, [pps, duration, seed])
 
   useEffect(() => {
     if (!assetPath) return
     let cancelled = false
-    peaksRef.current = null
 
     const fallbackPeaks = (): number[] => {
       let h = hashStr(seed)
@@ -161,7 +204,6 @@ function Waveform({ assetPath, seed, duration, sourceStart, pps, muted }: { asse
           if (cancelled) return
           const sr = decoded.sampleRate
           const full = decoded.getChannelData(0)
-          // alleen het stuk dat de clip toont (sourceStart → sourceStart+duration)
           const s0 = Math.max(0, Math.floor(sourceStart * sr))
           const s1 = Math.min(full.length, Math.floor((sourceStart + duration) * sr))
           const data = s0 < s1 ? full.subarray(s0, s1) : full
@@ -184,11 +226,10 @@ function Waveform({ assetPath, seed, duration, sourceStart, pps, muted }: { asse
             const rms = Math.sqrt(sum / Math.max(1, end - start))
             out.push(Math.pow(0.55 * peak + 0.45 * rms, 0.42))
           }
-          // min-max stretch → stille audio geeft ook volle balken (geen platte lijn)
           const max = Math.max(...out, 0.001)
           const min = Math.min(...out)
           const range = Math.max(0.02, max - min)
-          finish(out.map((v) => 0.08 + ((v - min) / range) * 0.92))
+          finish(out.map((v) => 0.25 + ((v - min) / range) * 0.75))
         })
       })
       .catch(() => finish(fallbackPeaks()))
