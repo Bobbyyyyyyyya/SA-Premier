@@ -1724,7 +1724,7 @@ button.small { font-size: 11px; padding: 4px 8px; }
 .clip.audio { background: linear-gradient(180deg, #3b6ea5 0%, #2f5a8a 100%); border-color: #4a7ab8; }
 .clip.audio:nth-child(3n) { background: linear-gradient(180deg, #2d6b4a 0%, #1e5a3c 100%); border-color: #3a7a5a; } /* variatie voor master-achtige track zoals in foto */
 .clip .clip-wave span { background: rgba(255,255,255,0.75); }
-.clip-film { opacity: 0.45; }
+.clip-film { opacity: 0.92; }
 .clip-top { background: linear-gradient(180deg, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.35) 60%, transparent 100%); padding: 2px 6px; }
 .clip-name { font-size: 10px; font-weight: 600; }
 .clip-dur { font-size: 8px; }

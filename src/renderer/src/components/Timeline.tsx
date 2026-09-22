@@ -82,29 +82,29 @@ function Waveform({ assetPath, seed, duration, sourceStart, pps, muted }: { asse
       const dpr = window.devicePixelRatio || 1
       c.setTransform(dpr, 0, 0, dpr, 0, 0)
       c.clearRect(0, 0, W, H)
-      c.strokeStyle = 'rgba(255,255,255,0.92)'
-      c.lineWidth = 1.1
+      c.strokeStyle = 'rgba(255,255,255,0.95)'
+      c.lineWidth = 1.9
       c.lineCap = 'round'
       c.lineJoin = 'round'
       c.beginPath()
       const mid = H / 2
       for (let i = 0; i < peaks.length; i++) {
         const x = (i / (peaks.length - 1)) * W
-        const h = peaks[i] * (H * 0.46)
+        const h = peaks[i] * (H * 0.48)
         if (i === 0) c.moveTo(x, mid - h)
         else c.lineTo(x, mid - h)
       }
       for (let i = peaks.length - 1; i >= 0; i--) {
         const x = (i / (peaks.length - 1)) * W
-        const h = peaks[i] * (H * 0.46)
+        const h = peaks[i] * (H * 0.48)
         c.lineTo(x, mid + h)
       }
       c.closePath()
-      c.fillStyle = 'rgba(255,255,255,0.18)'
+      c.fillStyle = 'rgba(255,255,255,0.26)'
       c.fill()
       c.stroke()
-      c.strokeStyle = 'rgba(255,255,255,0.2)'
-      c.lineWidth = 0.6
+      c.strokeStyle = 'rgba(255,255,255,0.28)'
+      c.lineWidth = 0.8
       c.beginPath()
       c.moveTo(0, mid)
       c.lineTo(W, mid)
