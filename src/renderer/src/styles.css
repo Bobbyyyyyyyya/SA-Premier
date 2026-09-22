@@ -615,7 +615,8 @@ select:focus {
 }
 
 .tl-track-header {
-  height: 56px;
+  height: 60px;
+  min-height: 60px;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -661,7 +662,8 @@ select:focus {
 
 .tl-row {
   position: relative;
-  height: 56px;
+  height: 60px;
+  min-height: 60px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -690,8 +692,11 @@ select:focus {
 
 .clip {
   position: absolute;
-  top: 4px;
-  bottom: 4px;
+  /* top/height expliciet — top+bottom alleen liet de clip instorten tot ~0px */
+  top: 3px;
+  bottom: auto;
+  height: 54px;
+  min-height: 54px;
   border-radius: 5px;
   overflow: hidden;
   cursor: grab;
@@ -1634,7 +1639,8 @@ button.small { font-size: 11px; padding: 4px 8px; }
 
 /* clips */
 .clip {
-  top: 6px; bottom: 6px;
+  top: 3px; bottom: auto;
+  height: 54px; min-height: 54px;
   border-radius: 8px;
   border: 1px solid rgba(255,255,255,0.16);
   box-shadow: 0 2px 10px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.18);
@@ -1683,6 +1689,7 @@ button.small { font-size: 11px; padding: 4px 8px; }
   top: 3px;
   width: calc(100% - 6px);
   height: calc(100% - 6px);
+  min-height: 40px;
   display: block;
   pointer-events: none;
   z-index: 1;
@@ -1741,7 +1748,7 @@ button.small { font-size: 11px; padding: 4px 8px; }
 .th-controls button.active.warn { background: #6b2a2a; border-color: #8a3a3a; }
 .tl-body { background: #0f0f10; }
 .tl-ruler { background: #1e1e20; border-bottom: 1px solid #2a2a2e; }
-.clip { top: 3px; bottom: 3px; border-radius: 4px; border: 1.5px solid rgba(255,255,255,0.14); }
+.clip { top: 3px; bottom: auto; height: 54px; min-height: 54px; border-radius: 4px; border: 1.5px solid rgba(255,255,255,0.14); }
 .clip.video { background: #2a2a2e; }
 .clip.audio { background: linear-gradient(180deg, #3b6ea5 0%, #2f5a8a 100%); border-color: #4a7ab8; }
 .clip.audio:nth-child(3n) { background: linear-gradient(180deg, #2d6b4a 0%, #1e5a3c 100%); border-color: #3a7a5a; } /* variatie voor master-achtige track zoals in foto */

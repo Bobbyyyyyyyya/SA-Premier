@@ -447,7 +447,7 @@ function ClipBox({ clip, asset, pps, selected, dimmed, tracks, snapEnabled }: Cl
   return (
     <div
       className={`clip ${clip.kind} ${selected ? 'selected' : ''} ${dragging ? 'dragging' : ''} ${trimming ? 'trimming' : ''} ${dimmed ? 'dimmed' : ''}`}
-      style={{ left, width, contain: 'layout paint' } as React.CSSProperties}
+      style={{ left, width, top: 3, height: ROW_H - 6, minHeight: ROW_H - 6, contain: 'layout paint' } as React.CSSProperties}
       onPointerDown={onMoveDrag}
       onDoubleClick={(e) => {
         e.stopPropagation()
