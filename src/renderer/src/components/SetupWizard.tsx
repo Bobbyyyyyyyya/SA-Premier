@@ -150,7 +150,7 @@ export default function SetupWizard({ open, onClose }: { open: boolean; onClose:
                     <button
                       className={effFlags[e.key] ? 'primary' : ''}
                       onClick={() => setFlags((f) => ({ ...f, [e.key]: !f[e.key] }))}
-                    >
+                     title="Klik voor actie" data-tooltip="Klik voor actie">
                       {effFlags[e.key] ? 'Aan ✓' : 'Uit'}
                     </button>
                   </div>
@@ -169,8 +169,8 @@ export default function SetupWizard({ open, onClose }: { open: boolean; onClose:
 
             <div className="modal-actions">
               <div className="spacer" />
-              <button onClick={onClose} disabled={saving}>Later</button>
-              <button className="primary" onClick={() => save(true)} disabled={saving}>
+              <button onClick={onClose} disabled={saving} title="Later" data-tooltip="Later">Later</button>
+              <button className="primary" onClick={() => save(true)} disabled={saving} title="Klik voor actie" data-tooltip="Klik voor actie">
                 {saving ? 'Opslaan…' : 'Opslaan & doorgaan'}
               </button>
             </div>

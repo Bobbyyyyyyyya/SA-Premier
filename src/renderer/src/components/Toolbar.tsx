@@ -17,11 +17,11 @@ export default function Toolbar({ onExport, onHome }: { onExport: () => void; on
 
   return (
     <header className="toolbar">
-      <button className="ghost home-btn" onClick={onHome} title="Home">⌂</button>
+      <button className="ghost home-btn" onClick={onHome} title="Home" data-tooltip="Home">⌂</button>
       <div className="brand">
         SA<span>Premier</span>
       </div>
-      <button onClick={() => importFiles()}>Import</button>
+      <button onClick={() => importFiles()} title="Import" data-tooltip="Import">Import</button>
       <div className="zoom">
         <span>Zoom</span>
         <input
@@ -66,7 +66,7 @@ export default function Toolbar({ onExport, onHome }: { onExport: () => void; on
           </option>
         ))}
       </select>
-      <button className="primary" onClick={onExport}>
+      <button className="primary" onClick={onExport} title="Export" data-tooltip="Export">
         Export
       </button>
     </header>

@@ -507,22 +507,22 @@ function TrackHeader({ track, clipCount }: { track: Track; clipCount: number }):
         </div>
       </div>
       <div className="th-controls">
-        <button className={track.hidden ? 'active' : ''} title={track.hidden ? 'Toon' : 'Verbergen'} onClick={() => setTrackHidden(track.id, !track.hidden)}>
+        <button className={track.hidden ? 'active' : ''} title={track.hidden ? 'Toon' : 'Verbergen'} onClick={() => setTrackHidden(track.id, !track.hidden)} data-tooltip="Toon / Verbergen">
           {track.hidden ? <IconEyeOff size={13} /> : <IconEye size={13} />}
         </button>
-        <button className={locked ? 'active warn' : ''} title={locked ? 'Unlock' : 'Lock track'} onClick={() => setTrackLocked(track.id, !locked)}>
+        <button className={locked ? 'active warn' : ''} title={locked ? 'Unlock' : 'Lock track'} onClick={() => setTrackLocked(track.id, !locked)} data-tooltip="Lock / Unlock">
           {locked ? <IconLock size={13} /> : <IconUnlock size={13} />}
         </button>
-        <button className={track.muted ? 'active warn' : ''} title={track.muted ? 'Unmute' : 'Mute'} onClick={() => setTrackMuted(track.id, !track.muted)}>
+        <button className={track.muted ? 'active warn' : ''} title={track.muted ? 'Unmute' : 'Mute'} onClick={() => setTrackMuted(track.id, !track.muted)} data-tooltip="Mute / Unmute">
           {track.muted ? <IconMute size={13} /> : <IconVolume size={13} />}
         </button>
-        <button className={solo ? 'active' : ''} title={solo ? 'Solo uit' : 'Solo'} onClick={() => setTrackSolo(track.id, !solo)}>
+        <button className={solo ? 'active' : ''} title={solo ? 'Solo uit' : 'Solo'} onClick={() => setTrackSolo(track.id, !solo)} data-tooltip="Solo">
           S
         </button>
         <button className="ghost danger" title="Verwijder track" onClick={() => {
           if (clipCount > 0 && !window.confirm(`Track "${track.name}" met ${clipCount} clip(s) verwijderen?`)) return
           removeTrack(track.id)
-        }}>
+        }} data-tooltip="Verwijder track">
           ×
         </button>
       </div>
@@ -768,10 +768,10 @@ export default function Timeline(): JSX.Element {
         </span>
         <div className="tl-sep" />
         <div className="tl-group">
-          <button className="tl-btn" title="Uitzoomen" onClick={() => setZoom(zoom / 1.25)}>−</button>
-          <button className="tl-btn pct" title="Zoom: klik om te fitten" onClick={zoomToFit}>{Math.round(zoom * 100)}%</button>
-          <button className="tl-btn" title="Inzoomen" onClick={() => setZoom(zoom * 1.25)}>+</button>
-          <button className="tl-btn" title="Fit alles in beeld" onClick={zoomToFit}>⤢</button>
+          <button className="tl-btn" title="Uitzoomen" onClick={() => setZoom(zoom / 1.25)} data-tooltip="Uitzoomen">−</button>
+          <button className="tl-btn pct" title="Zoom: klik om te fitten" onClick={zoomToFit} data-tooltip="Zoom: klik om te fitten">{Math.round(zoom * 100)}%</button>
+          <button className="tl-btn" title="Inzoomen" onClick={() => setZoom(zoom * 1.25)} data-tooltip="Inzoomen">+</button>
+          <button className="tl-btn" title="Fit alles in beeld" onClick={zoomToFit} data-tooltip="Fit alles in beeld">⤢</button>
         </div>
         <div className="tl-sep" />
         <div className="tl-group">
@@ -779,6 +779,7 @@ export default function Timeline(): JSX.Element {
             className={`tl-btn toggle ${snapEnabled ? 'active' : ''}`}
             title={snapEnabled ? 'Snappen aan (klik om uit te zetten)' : 'Snappen uit (klik om aan te zetten)'}
             onClick={() => setSnapEnabled(!snapEnabled)}
+            data-tooltip="Snappen aan/uit"
           >
             <IconSnap size={13} />
           </button>
@@ -786,34 +787,35 @@ export default function Timeline(): JSX.Element {
             className={`tl-btn toggle ${follow ? 'active' : ''}`}
             title={follow ? 'Playhead volgen aan' : 'Playhead volgen uit'}
             onClick={() => setFollow(!follow)}
+            data-tooltip="Playhead volgen"
           >
             <IconFollow size={13} />
           </button>
-          <button className="tl-btn" title="Naar begin (Home)" onClick={seekStart}><IconStart size={13} /></button>
-          <button className="tl-btn" title="Naar einde (End)" onClick={seekEnd}><IconEnd size={13} /></button>
+          <button className="tl-btn" title="Naar begin (Home)" onClick={seekStart} data-tooltip="Naar begin (Home)"><IconStart size={13} /></button>
+          <button className="tl-btn" title="Naar einde (End)" onClick={seekEnd} data-tooltip="Naar einde (End)"><IconEnd size={13} /></button>
         </div>
         <div className="tl-sep" />
         <div className="tl-group">
           <button className="tl-btn primary" title="Tekstclip op playhead" onClick={() => {
             pausePlayback()
             addTextClip('', useEditorStore.getState().playhead, {})
-          }}>
+          }} data-tooltip="Tekstclip op playhead">
             + Tekst
           </button>
-          <button className="tl-btn" title="Splits geselecteerde clip op playhead (S)" disabled={!selectedClip} onClick={splitSelected}>
+          <button className="tl-btn" title="Splits geselecteerde clip op playhead (S)" disabled={!selectedClip} onClick={splitSelected} data-tooltip="Splits geselecteerde clip op playhead (S)">
             <IconCut size={13} />
           </button>
-          <button className="tl-btn" title="Dupliceer clip (Ctrl+D)" disabled={!selectedClip} onClick={duplicateSelected}>
+          <button className="tl-btn" title="Dupliceer clip (Ctrl+D)" disabled={!selectedClip} onClick={duplicateSelected} data-tooltip="Dupliceer clip (Ctrl+D)">
             <IconCopy size={13} />
           </button>
-          <button className="tl-btn danger" title="Verwijder clip (Del)" disabled={!selectedClip} onClick={deleteSelected}>
+          <button className="tl-btn danger" title="Verwijder clip (Del)" disabled={!selectedClip} onClick={deleteSelected} data-tooltip="Verwijder clip (Del)">
             <IconTrash size={13} />
           </button>
         </div>
         <div className="tl-sep" />
         <div className="tl-group">
-          <button className="tl-btn" title="Video track toevoegen" onClick={() => addTrack('video')}>+V</button>
-          <button className="tl-btn" title="Audio track toevoegen" onClick={() => addTrack('audio')}>+A</button>
+          <button className="tl-btn" title="Video track toevoegen" onClick={() => addTrack('video')} data-tooltip="Video track toevoegen">+V</button>
+          <button className="tl-btn" title="Audio track toevoegen" onClick={() => addTrack('audio')} data-tooltip="Audio track toevoegen">+A</button>
         </div>
         <span className="tt-hint">Sleep om te verplaatsen · ↑↓ van track wisselen · randen om te trimmen · Ctrl+scroll = zoom · S = splits</span>
       </div>

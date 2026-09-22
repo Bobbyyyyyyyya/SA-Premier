@@ -232,7 +232,7 @@ export default function PreviewPlayer(): JSX.Element {
         />
       </div>
       <div className="transport">
-        <button className="btn-play" onClick={togglePlay} title={playing ? 'Pause' : 'Play'}>
+        <button className="btn-play" onClick={togglePlay} title={playing ? 'Pause' : 'Play'} data-tooltip="Actie">
           {playing ? (
             <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
               <rect x="5" y="4" width="5" height="16" rx="1.5" fill="currentColor" />
@@ -263,7 +263,7 @@ export default function PreviewPlayer(): JSX.Element {
             className={`vol-mute ${masterMuted || masterVol <= 0 ? 'active' : ''}`}
             onClick={() => setMasterMuted(!masterMuted)}
             title={masterMuted ? 'Unmute' : 'Mute'}
-          >
+           data-tooltip="Actie">
             {masterMuted || masterVol <= 0 ? <IconMute size={14} /> : masterVol < 0.5 ? <IconVolumeLow size={14} /> : <IconVolume size={14} />}
           </button>
           <input

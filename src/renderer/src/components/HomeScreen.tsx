@@ -80,7 +80,11 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
               if (hasProject && !window.confirm('Nieuw project starten? Huidige timeline wordt geleegd (opgeslagen project blijft bewaard).')) return
               useEditorStore.getState().resetProject()
               onOpen()
-            }}>
+            }} title="＋
+              
+                Nieuw project" data-tooltip="＋
+              
+                Nieuw project">
               <span className="cta-icon">＋</span>
               <span>
                 <b>Nieuw project</b>
@@ -90,14 +94,20 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
             <button className="home-cta" onClick={async () => {
               await importFiles()
               onOpen()
-            }}>
+            }} title="⬆
+              
+                Media importeren" data-tooltip="⬆
+              
+                Media importeren">
               <span className="cta-icon">⬆</span>
               <span>
                 <b>Media importeren</b>
                 <i>Meerdere video’s = één project</i>
               </span>
             </button>
-            <button className="home-cta ghost" onClick={() => window.dispatchEvent(new Event('open-ai-setup'))}>
+            <button className="home-cta ghost" onClick={() => window.dispatchEvent(new Event('open-ai-setup'))} title="AI-setup
+                Licht / Volledig / Aangep" data-tooltip="AI-setup
+                Licht / Volledig / Aangep">
               <span className="cta-icon"><IconRobot size={18} /></span>
               <span>
                 <b>AI-setup</b>
@@ -138,12 +148,12 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
                 </div>
               </div>
               <div className="project-actions">
-                <button className="primary" onClick={onOpen}>Open timeline →</button>
+                <button className="primary" onClick={onOpen} title="Open timeline →" data-tooltip="Open timeline →">Open timeline →</button>
                 <button className="ghost" onClick={async () => {
                   if (!window.confirm('Project legen?')) return
                   useEditorStore.getState().resetProject()
                   void refresh()
-                }}>Legen</button>
+                }} title="Legen" data-tooltip="Legen">Legen</button>
               </div>
             </div>
           ) : (
@@ -153,7 +163,7 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
                 <div className="project-empty-title">Nog geen project</div>
                 <div className="project-empty-sub">Importeer meerdere video’s tegelijk — ze komen samen in één timeline. Of start met <b>Nieuw project</b>.</div>
               </div>
-              <button className="primary" onClick={async () => { await importFiles(); onOpen() }}>Importeer nu</button>
+              <button className="primary" onClick={async () => { await importFiles(); onOpen() }} title="Importeer nu" data-tooltip="Importeer nu">Importeer nu</button>
             </div>
           )}
         </section>
@@ -163,11 +173,11 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
           <div className="home-section-head">
             <h2>Recent</h2>
             <div className="home-section-actions">
-              <button className="ghost small" onClick={() => void openRecent(recent.map((r) => r.path))} disabled={!recent.length} title="Open alle recente bestanden samen in één project">
+              <button className="ghost small" onClick={() => void openRecent(recent.map((r) => r.path))} disabled={!recent.length} title="Open alle recente bestanden samen in één project" data-tooltip="Open alle recente bestanden samen in één project">
                 Alles in één project
               </button>
               {recent.length > 0 && (
-                <button className="ghost small" onClick={async () => { await window.api.recentsClear(); void refresh() }}>
+                <button className="ghost small" onClick={async () => { await window.api.recentsClear(); void refresh() }} title="Wissen" data-tooltip="Wissen">
                   Wissen
                 </button>
               )}

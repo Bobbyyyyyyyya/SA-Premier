@@ -1729,3 +1729,29 @@ button.small { font-size: 11px; padding: 4px 8px; }
 .clip-name { font-size: 10px; font-weight: 600; }
 .clip-dur { font-size: 8px; }
 
+/* ---------- Tooltip (instant on hover, ook bij disabled) ---------- */
+[data-tooltip], [title] { position: relative; }
+[data-tooltip]:hover::after,
+[title]:not([data-tooltip]):hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1e1e20;
+  color: #fff;
+  padding: 6px 9px;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+  opacity: 1;
+  pointer-events: none;
+  z-index: 9999;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.5);
+  border: 1px solid #3a3a3e;
+}
+[title]:not([data-tooltip]):hover::after { content: attr(title); }
+button[disabled][data-tooltip]:hover::after,
+button[disabled][title]:hover::after { opacity: 1; }
+

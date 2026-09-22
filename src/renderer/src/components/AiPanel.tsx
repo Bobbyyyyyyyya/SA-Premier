@@ -254,7 +254,7 @@ export default function AiPanel(): JSX.Element {
         <span>
           AI-pakket: <b>{setupMode === 'full' ? <><span style={{display:"inline-flex",verticalAlign:"middle",marginRight:4}}><IconBox size={12} /></span> Volledig (meegeleverd)</> : setupMode === 'custom' ? <><span style={{display:"inline-flex",verticalAlign:"middle",marginRight:4}}><IconTool size={12} /></span> Aangepast</> : <><span style={{display:"inline-flex",verticalAlign:"middle",marginRight:4}}><IconCloud size={12} /></span> Licht (download bij gebruik)</>}</b>
         </span>
-        <button onClick={() => window.dispatchEvent(new Event('open-ai-setup'))} title="Wijzig of AI meegeleverd of gedownload wordt">
+        <button onClick={() => window.dispatchEvent(new Event('open-ai-setup'))} title="Wijzig of AI meegeleverd of gedownload wordt" data-tooltip="Wijzig of AI meegeleverd of gedownload wordt">
           Wijzig…
         </button>
       </div>
@@ -266,7 +266,7 @@ export default function AiPanel(): JSX.Element {
             : starting.ollama ? 'Ollama starten… (auto)' : 'Ollama niet actief'}
         </span>
         {!ollama.available && (
-          <button onClick={() => startOne('ollama')} disabled={starting.ollama} style={{ marginLeft: 'auto' }}>
+          <button onClick={() => startOne('ollama')} disabled={starting.ollama} style={{ marginLeft: 'auto' }} title="Klik voor actie" data-tooltip="Klik voor actie">
             {starting.ollama ? '…' : 'Start'}
           </button>
         )}
@@ -280,7 +280,7 @@ export default function AiPanel(): JSX.Element {
             : starting.comfy ? 'ComfyUI starten… (auto, kan 30–60s duren)' : 'ComfyUI engine niet actief (auto-start aan)'}
         </span>
         {!comfy.available && (
-          <button onClick={() => startOne('comfy')} disabled={starting.comfy} style={{ marginLeft: 'auto' }}>
+          <button onClick={() => startOne('comfy')} disabled={starting.comfy} style={{ marginLeft: 'auto' }} title="Klik voor actie" data-tooltip="Klik voor actie">
             {starting.comfy ? '…' : 'Start'}
           </button>
         )}
@@ -294,7 +294,7 @@ export default function AiPanel(): JSX.Element {
             : starting.music ? 'MusicGen starten… (auto)' : 'MusicGen niet actief — synth fallback aan'}
         </span>
         {!musicStatus.available && (
-          <button onClick={() => startOne('music')} disabled={starting.music} style={{ marginLeft: 'auto' }}>
+          <button onClick={() => startOne('music')} disabled={starting.music} style={{ marginLeft: 'auto' }} title="Klik voor actie" data-tooltip="Klik voor actie">
             {starting.music ? '…' : 'Start'}
           </button>
         )}
@@ -311,9 +311,9 @@ export default function AiPanel(): JSX.Element {
           <input className="text-input" placeholder="Search models…" value={modelSearch} onChange={(e) => setModelSearch(e.target.value)} />
         </div>
         <div className="models-tabs">
-          <button className={modelFilter === 'all' ? 'active' : ''} onClick={() => setModelFilter('all')}>All ({totalModels})</button>
-          <button className={modelFilter === 'image' ? 'active' : ''} onClick={() => setModelFilter('image')}>Photos ({catalog.length})</button>
-          <button className={modelFilter === 'music' ? 'active' : ''} onClick={() => setModelFilter('music')}>Music ({musicCatalog.length})</button>
+          <button className={modelFilter === 'all' ? 'active' : ''} onClick={() => setModelFilter('all')} title="All ()" data-tooltip="All ()">All ({totalModels})</button>
+          <button className={modelFilter === 'image' ? 'active' : ''} onClick={() => setModelFilter('image')} title="Photos ()" data-tooltip="Photos ()">Photos ({catalog.length})</button>
+          <button className={modelFilter === 'music' ? 'active' : ''} onClick={() => setModelFilter('music')} title="Music ()" data-tooltip="Music ()">Music ({musicCatalog.length})</button>
         </div>
 
         {(modelFilter === 'all' || modelFilter === 'image') && (
@@ -334,7 +334,7 @@ export default function AiPanel(): JSX.Element {
                         if (!r.ok) alert(r.error ?? 'Verwijderen mislukt')
                         void refreshComfy()
                       }}
-                    >
+                     title="Remove" data-tooltip="Remove">
                       Remove
                     </button>
                   </div>
@@ -357,7 +357,7 @@ export default function AiPanel(): JSX.Element {
                     {already ? (
                       <div className="ai-hint" style={{ color: '#37b06f', marginTop: 6 }}>Ready to use</div>
                     ) : !inst || inst.phase === 'idle' ? (
-                      <button className="primary" style={{ width: '100%', marginTop: 8 }} onClick={() => window.api.comfyInstall(c.id)}>
+                      <button className="primary" style={{ width: '100%', marginTop: 8 }} onClick={() => window.api.comfyInstall(c.id)} title="Download" data-tooltip="Download">
                         Download
                       </button>
                     ) : inst.phase === 'downloading' ? (
@@ -399,7 +399,7 @@ export default function AiPanel(): JSX.Element {
                         if (!r.ok) alert(r.error ?? 'Verwijderen mislukt')
                         void refreshComfy()
                       }}
-                    >
+                     title="Remove" data-tooltip="Remove">
                       Remove
                     </button>
                   </div>
@@ -422,7 +422,7 @@ export default function AiPanel(): JSX.Element {
                     {already ? (
                       <div className="ai-hint" style={{ color: '#37b06f', marginTop: 6 }}>Ready to use</div>
                     ) : !inst || inst.phase === 'idle' ? (
-                      <button className="primary" style={{ width: '100%', marginTop: 8 }} onClick={() => window.api.musicInstall(c.id)}>
+                      <button className="primary" style={{ width: '100%', marginTop: 8 }} onClick={() => window.api.musicInstall(c.id)} title="Download" data-tooltip="Download">
                         Download
                       </button>
                     ) : inst.phase === 'downloading' ? (
@@ -490,7 +490,7 @@ export default function AiPanel(): JSX.Element {
               placeholder="Describe an image…"
             />
             <div className="btn-row">
-              <button className="primary" onClick={runImage} disabled={imgBusy || !comfy.available}>
+              <button className="primary" onClick={runImage} disabled={imgBusy || !comfy.available} title="Generate image" data-tooltip="Generate image">
                 Generate image
               </button>
             </div>
@@ -517,8 +517,8 @@ export default function AiPanel(): JSX.Element {
               <>
                 <img className="ai-img" src={imgResult.dataUrl} alt="generated" />
                 <div className="btn-row">
-                  <button onClick={addResultImage}>Add to library</button>
-                  <button onClick={downloadResultImage}>Download</button>
+                  <button onClick={addResultImage} title="Add to library" data-tooltip="Add to library">Add to library</button>
+                  <button onClick={downloadResultImage} title="Download" data-tooltip="Download">Download</button>
                 </div>
               </>
             )}
@@ -586,7 +586,7 @@ export default function AiPanel(): JSX.Element {
           <span className="val">{seconds}s</span>
         </div>
         <div className="btn-row">
-          <button className="primary" onClick={runBeat} disabled={beatBusy}>
+          <button className="primary" onClick={runBeat} disabled={beatBusy} title="Generate beat" data-tooltip="Generate beat">
             Generate beat
           </button>
         </div>
@@ -611,8 +611,8 @@ export default function AiPanel(): JSX.Element {
             />
             <div className="ai-hint">Preview — als je stilte hoort, probeer prompt te wijzigen of BPM/length aan te passen.</div>
             <div className="btn-row" style={{ marginTop: 8 }}>
-              <button onClick={addResultAudio}>Add to library</button>
-              <button onClick={downloadResultAudio}>Download</button>
+              <button onClick={addResultAudio} title="Add to library" data-tooltip="Add to library">Add to library</button>
+              <button onClick={downloadResultAudio} title="Download" data-tooltip="Download">Download</button>
             </div>
           </>
         )}

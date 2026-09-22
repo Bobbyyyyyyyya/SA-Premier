@@ -74,13 +74,13 @@ export default function MediaPanel(): JSX.Element {
   return (
     <aside className="panel">
       <div className="tabs">
-        <button className={tab === 'media' ? 'active' : ''} onClick={() => setTab('media')}>
+        <button className={tab === 'media' ? 'active' : ''} onClick={() => setTab('media')} title="Media" data-tooltip="Media">
           Media
         </button>
-        <button className={tab === 'effects' ? 'active' : ''} onClick={() => setTab('effects')}>
+        <button className={tab === 'effects' ? 'active' : ''} onClick={() => setTab('effects')} title="Effects" data-tooltip="Effects">
           Effects
         </button>
-        <button className={`ai-tab ${tab === 'ai' ? 'active' : ''}`} onClick={() => setTab('ai')}>
+        <button className={`ai-tab ${tab === 'ai' ? 'active' : ''}`} onClick={() => setTab('ai')} title="AI" data-tooltip="AI">
           AI
         </button>
       </div>
@@ -88,7 +88,7 @@ export default function MediaPanel(): JSX.Element {
       <div className="panel-body">
         {tab === 'media' && (
           <>
-            <button className="import-btn" onClick={onImport} disabled={importing}>
+            <button className="import-btn" onClick={onImport} disabled={importing} title="Klik voor actie" data-tooltip="Klik voor actie">
               {importing ? 'Importing...' : '+ Import media'}
             </button>
             <div className="panel-section-title">Library</div>
@@ -141,7 +141,7 @@ export default function MediaPanel(): JSX.Element {
                           }
                           if (audioTrack) s.addClip(a.id, audioTrack.id, s.playhead)
                         }}
-                      >
+                       data-tooltip="Zet audio van deze video als clip op de audiotrack (op playhead)">
                         ⤷ audio → track
                       </button>
                       <button
@@ -152,13 +152,13 @@ export default function MediaPanel(): JSX.Element {
                           const r = await window.api.extractAudio(a.path, { name: a.name.replace(/\.[a-z0-9]+$/i, '') })
                           if (r.ok && r.outPath) await importPaths([r.outPath], { place: false })
                         }}
-                      >
+                       data-tooltip="Sla alleen het geluid op als WAV/MP3">
                         💾 audio
                       </button>
                     </div>
                   )}
                 </div>
-                <button className="remove" onClick={() => removeAsset(a.id)} title="Remove">
+                <button className="remove" onClick={() => removeAsset(a.id)} title="Remove" data-tooltip="Remove">
                   x
                 </button>
               </div>
@@ -174,7 +174,7 @@ export default function MediaPanel(): JSX.Element {
                 <div className="panel-section-title">{cat}</div>
                 <div className="preset-grid">
                   {PRESETS.filter((p) => p.cat === cat).map((p) => (
-                    <button key={p.name} disabled={!selectedClipId} onClick={() => applyPreset(p.fx)}>
+                    <button key={p.name} disabled={!selectedClipId} onClick={() => applyPreset(p.fx)} title="Klik voor actie" data-tooltip="Klik voor actie">
                       {p.name}
                     </button>
                   ))}

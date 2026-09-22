@@ -142,8 +142,8 @@ export default function ExportDialog({ open, onClose }: { open: boolean; onClose
             </div>
             <div className="modal-actions">
               <div className="spacer" />
-              <button onClick={onClose}>Close</button>
-              <button className="primary" onClick={start} disabled={!assets.length || !fpsValid}>
+              <button onClick={onClose} title="Close" data-tooltip="Close">Close</button>
+              <button className="primary" onClick={start} disabled={!assets.length || !fpsValid} title="Export MP4" data-tooltip="Export MP4">
                 Export MP4
               </button>
             </div>
@@ -162,7 +162,7 @@ export default function ExportDialog({ open, onClose }: { open: boolean; onClose
             <div className="progress-note">{progress?.percent ?? 0}%</div>
             <div className="modal-actions">
               <div className="spacer" />
-              <button onClick={cancel}>Cancel</button>
+              <button onClick={cancel} title="Cancel" data-tooltip="Cancel">Cancel</button>
             </div>
           </>
         )}
@@ -175,8 +175,8 @@ export default function ExportDialog({ open, onClose }: { open: boolean; onClose
             </div>
             <div className="modal-actions">
               <div className="spacer" />
-              <button onClick={() => window.api.showItemInFolder(outPath)}>Show in folder</button>
-              <button className="primary" onClick={() => window.api.openPath(outPath)}>
+              <button onClick={() => window.api.showItemInFolder(outPath)} title="Show in folder" data-tooltip="Show in folder">Show in folder</button>
+              <button className="primary" onClick={() => window.api.openPath(outPath)} title="Open" data-tooltip="Open">
                 Open
               </button>
             </div>
@@ -188,7 +188,7 @@ export default function ExportDialog({ open, onClose }: { open: boolean; onClose
             <div className="error-text">{progress?.message ?? 'Export failed.'}</div>
             <div className="modal-actions">
               <div className="spacer" />
-              <button onClick={onClose}>Close</button>
+              <button onClick={onClose} title="Close" data-tooltip="Close">Close</button>
             </div>
           </>
         )}

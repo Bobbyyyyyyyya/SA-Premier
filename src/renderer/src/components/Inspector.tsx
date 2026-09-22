@@ -162,7 +162,7 @@ export default function Inspector(): JSX.Element {
             <div className="ctl">
               <label style={{ width: 76 }}>Background</label>
               <input type="color" value={toHex(td.bgColor === 'transparent' ? '#000000' : td.bgColor)} onChange={(e) => setText({ bgColor: e.target.value })} style={{ flex: 1, height: 26 }} />
-              <button onClick={() => setText({ bgColor: 'transparent' })} style={{ padding: '2px 8px' }}>Off</button>
+              <button onClick={() => setText({ bgColor: 'transparent' })} style={{ padding: '2px 8px' }} title="Off" data-tooltip="Off">Off</button>
             </div>
             <div className="ctl">
               <label style={{ width: 76 }}>Font</label>
@@ -188,7 +188,7 @@ export default function Inspector(): JSX.Element {
               <span className="val">{clip.duration.toFixed(1)}s</span>
             </div>
             <div className="btn-row">
-              <button className="danger-ghost" onClick={() => removeClip(clip.id)}>Delete text</button>
+              <button className="danger-ghost" onClick={() => removeClip(clip.id)} title="Delete text" data-tooltip="Delete text">Delete text</button>
             </div>
           </div>
         </div>
@@ -243,9 +243,9 @@ export default function Inspector(): JSX.Element {
             </span>
           </div>
           <div className="btn-row">
-            <button onClick={() => updateClip(clip.id, { volume: 1 })}>100%</button>
-            <button onClick={() => updateClip(clip.id, { volume: 0 })}>Mute</button>
-            <button className="danger-ghost" onClick={() => removeClip(clip.id)}>
+            <button onClick={() => updateClip(clip.id, { volume: 1 })} title="100%" data-tooltip="100%">100%</button>
+            <button onClick={() => updateClip(clip.id, { volume: 0 })} title="Mute" data-tooltip="Mute">Mute</button>
+            <button className="danger-ghost" onClick={() => removeClip(clip.id)} title="Delete clip" data-tooltip="Delete clip">
               Delete clip
             </button>
           </div>
@@ -256,11 +256,11 @@ export default function Inspector(): JSX.Element {
             <h4>Audio</h4>
             <div className="btn-row">
               {clip.kind === 'video' && (
-                <button onClick={extractAudioClip} title="Zet het geluid van deze video als aparte audio-clip op de audiotrack">
+                <button onClick={extractAudioClip} title="Zet het geluid van deze video als aparte audio-clip op de audiotrack" data-tooltip="Zet het geluid van deze video als aparte audio-clip op de audiotrack">
                   ⤷ Extract audio naar track
                 </button>
               )}
-              <button onClick={saveAudioFile} disabled={extracting} title="Sla alleen het geluid op als WAV/MP3-bestand">
+              <button onClick={saveAudioFile} disabled={extracting} title="Sla alleen het geluid op als WAV/MP3-bestand" data-tooltip="Sla alleen het geluid op als WAV/MP3-bestand">
                 {extracting ? 'Bezig…' : '💾 Save audio als…'}
               </button>
             </div>
@@ -281,7 +281,7 @@ export default function Inspector(): JSX.Element {
           <Slider label="Invert" value={fx.invert} min={0} max={1} step={0.01} onChange={(v) => setFx({ invert: v })} />
           <Slider label="Vignette" value={fx.vignette} min={0} max={1} step={0.01} onChange={(v) => setFx({ vignette: v })} />
           <div className="btn-row">
-            <button onClick={resetFx}>Reset</button>
+            <button onClick={resetFx} title="Reset" data-tooltip="Reset">Reset</button>
           </div>
         </div>
 
@@ -290,13 +290,13 @@ export default function Inspector(): JSX.Element {
           {nextClip ? (
             <>
               <div className="btn-row">
-                <button onClick={() => addTransition(clip.id, 'crossfade', 0.5)}>Crossfade 0.5s</button>
-                <button onClick={() => addTransition(clip.id, 'crossfade', 1)}>Crossfade 1s</button>
-                <button onClick={() => addTransition(clip.id, 'fade', 0.5)}>Fade out</button>
+                <button onClick={() => addTransition(clip.id, 'crossfade', 0.5)} title="Crossfade 0.5s" data-tooltip="Crossfade 0.5s">Crossfade 0.5s</button>
+                <button onClick={() => addTransition(clip.id, 'crossfade', 1)} title="Crossfade 1s" data-tooltip="Crossfade 1s">Crossfade 1s</button>
+                <button onClick={() => addTransition(clip.id, 'fade', 0.5)} title="Fade out" data-tooltip="Fade out">Fade out</button>
               </div>
               {(clip.transitionOut || clip.transitionIn) && (
                 <div className="btn-row">
-                  <button onClick={() => clearTransition(clip.id)}>Remove transition</button>
+                  <button onClick={() => clearTransition(clip.id)} title="Remove transition" data-tooltip="Remove transition">Remove transition</button>
                 </div>
               )}
               <div className="panel-section-title">to: {asset ? '' : ''}{nextClip ? 'next clip on this track' : ''}</div>
