@@ -64,7 +64,7 @@ function hashStr(s: string): number {
 
 /* ---------------- waveform / filmstrip ---------------- */
 
-function Waveform({ assetPath, seed, duration, pps, muted }: { assetPath?: string; seed: string; duration: number; pps: number; muted?: boolean }): JSX.Element {
+function Waveform({ assetPath, seed, duration, sourceStart, pps, muted }: { assetPath?: string; seed: string; duration: number; sourceStart: number; pps: number; muted?: boolean }): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
   useEffect(() => {
@@ -144,7 +144,13 @@ function Waveform({ assetPath, seed, duration, pps, muted }: { assetPath?: strin
       const ctx2 = new ACtx()
       return ctx2.decodeAudioData(buf.slice(0)).then((decoded) => {
         if (cancelled) { ctx2.close().catch(() => null); return }
-        const data = decoded.getChannelData(0)
+        const sr = decoded.sampleRate
+        const full = decoded.getChannelData(0)
+        // alleen het stuk dat de clip toont (sourceStart → sourceStart+duration) — anders klopt waveform niet bij trim
+        const s0 = Math.max(0, Math.floor(sourceStart * sr))
+        const s1 = Math.min(full.length, Math.floor((sourceStart + duration) * sr))
+        const data = s0 < s1 ? full.subarray(s0, s1) : full
+        if (!data.length) { drawFallback(); ctx2.close().catch(() => null); return }
         const step = Math.max(1, Math.floor(data.length / bars))
         const out: number[] = []
         for (let i = 0; i < bars; i++) {
@@ -160,21 +166,19 @@ function Waveform({ assetPath, seed, duration, pps, muted }: { assetPath?: strin
             sum += v * v
           }
           const rms = Math.sqrt(sum / Math.max(1, end - start))
-          // dB-achtige curve + mix: ook bij grote/luide nummers blijft variatie zichtbaar ipv dikke streep
           const shaped = Math.pow(0.55 * peak + 0.45 * rms, 0.48)
           out.push(shaped)
         }
         const max = Math.max(...out, 0.001)
         const min = Math.min(...out)
         const range = Math.max(0.02, max - min)
-        // niet naar 0-1 normaliseren op basis van min-max alleen, maar met floor zodat stiltes echt dun zijn
         drawBars(out.map((v) => 0.06 + ((v - min) / range) * 0.94))
         ctx2.close().catch(() => null)
       }).catch(() => drawFallback())
     }).catch(() => drawFallback())
 
     return () => { cancelled = true }
-  }, [assetPath, seed, duration, pps])
+  }, [assetPath, seed, duration, sourceStart, pps])
 
   return <canvas ref={canvasRef} className="clip-wave-canvas" style={{ opacity: muted ? 0.25 : 1, display: 'block', width: '100%', height: 32 }} />
 }
@@ -363,7 +367,7 @@ function ClipBox({ clip, asset, pps, selected, dimmed, tracks, snapEnabled }: Cl
           ? <div className="clip-thumb" style={{ backgroundImage: asset ? `url(${mediaUrl(asset.path)})` : undefined, backgroundSize: 'cover', opacity: 0.95 }} />
           : <Filmstrip assetPath={asset?.path} thumbnail={asset?.thumbnail} />
       )}
-      {clip.kind === 'audio' && <Waveform assetPath={asset?.path} seed={clip.id + (asset?.id ?? '')} duration={clip.duration} pps={pps} muted={dimmed} />}
+      {clip.kind === 'audio' && <Waveform assetPath={asset?.path} seed={clip.id + (asset?.id ?? '')} duration={clip.duration} sourceStart={clip.sourceStart} pps={pps} muted={dimmed} />}
       {isText && <div className="clip-thumb text-thumb">{clip.text?.text || 'Text'}</div>}
       <div className="clip-top">
         <span className="clip-name">{label}</span>
