@@ -76,11 +76,11 @@ export function IconChat(props: { size?: number }) {
 }
 export function IconStart(props: { size?: number }) {
   const s = props.size ?? 14
-  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><polygon points="19 12 5 20 5 4 19 12"/><line x1="5" y1="4" x2="5" y2="20"/></svg>
+  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><polygon points="5 12 19 20 19 4 5 12" fill="currentColor" stroke="none"/><polygon points="5 12 19 20 19 4 5 12" fill="none" stroke="currentColor"/><line x1="5" y1="4" x2="5" y2="20"/></svg>
 }
 export function IconEnd(props: { size?: number }) {
   const s = props.size ?? 14
-  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><polygon points="5 12 19 4 19 20 5 12"/><line x1="19" y1="4" x2="19" y2="20"/></svg>
+  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><polygon points="19 12 5 20 5 4 19 12" fill="currentColor" stroke="none"/><polygon points="19 12 5 20 5 4 19 12" fill="none" stroke="currentColor"/><line x1="19" y1="4" x2="19" y2="20"/></svg>
 }
 export function IconSpeaker(props: { size?: number }) {
   const s = props.size ?? 14
