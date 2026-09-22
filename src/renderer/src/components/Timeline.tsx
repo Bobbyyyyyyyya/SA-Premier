@@ -38,9 +38,8 @@ function snapTime(t: number, excludeId?: string, enabled = true): number {
   }
   for (const e of edges) check(e)
   check(playhead)
-  // 1s snap alleen als je echt dicht bij hele seconde bent (niet altijd)
-  if (Math.abs(t - Math.round(t)) < threshold * 0.7) check(Math.round(t))
   check(0)
+  // geen 1s-snap meer tijdens slepen — veroorzaakte 1s sprongen bij grote tracks
   return best
 }
 
