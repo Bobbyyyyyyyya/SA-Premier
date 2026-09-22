@@ -82,8 +82,10 @@ function Waveform({ assetPath, seed, duration, sourceStart, pps, muted }: { asse
       const dpr = window.devicePixelRatio || 1
       c.setTransform(dpr, 0, 0, dpr, 0, 0)
       c.clearRect(0, 0, W, H)
+      const zoom = useEditorStore.getState().zoom
+      const thick = Math.max(2.2, Math.min(3.4, 1.8 + zoom * 0.7))
       c.strokeStyle = 'rgba(255,255,255,1)'
-      c.lineWidth = 2.2
+      c.lineWidth = thick
       c.lineCap = 'round'
       c.lineJoin = 'round'
       c.beginPath()
@@ -100,11 +102,11 @@ function Waveform({ assetPath, seed, duration, sourceStart, pps, muted }: { asse
         c.lineTo(x, mid + h)
       }
       c.closePath()
-      c.fillStyle = 'rgba(255,255,255,0.34)'
+      c.fillStyle = 'rgba(255,255,255,0.38)'
       c.fill()
       c.stroke()
-      c.strokeStyle = 'rgba(255,255,255,0.32)'
-      c.lineWidth = 1
+      c.strokeStyle = 'rgba(255,255,255,0.38)'
+      c.lineWidth = 1.1
       c.beginPath()
       c.moveTo(0, mid)
       c.lineTo(W, mid)

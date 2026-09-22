@@ -1608,9 +1608,9 @@ button.small { font-size: 11px; padding: 4px 8px; }
 }
 
 .tl-playhead {
-  width: 2px;
-  background: linear-gradient(180deg, var(--accent-soft), var(--accent));
-  box-shadow: 0 0 10px rgba(255,127,42,0.8), 0 0 2px rgba(255,127,42,1);
+  width: 3px;
+  background: linear-gradient(180deg, #ff9a4a, #ff7f2a 60%, #ff6a00 100%);
+  box-shadow: 0 0 14px rgba(255,127,42,0.95), 0 0 4px rgba(255,127,42,1), 0 0 0 1px rgba(255,255,255,0.35);
   z-index: 30;
 }
 .tl-playhead-cap {
