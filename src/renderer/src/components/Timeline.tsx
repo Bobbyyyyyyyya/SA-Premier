@@ -111,17 +111,16 @@ function Waveform({ assetPath, seed, duration, sourceStart, pps, muted }: { asse
       c.stroke()
     }
 
-    // W en bars schalen met clip-breedte zodat grote nummers niet 1 dikke streep worden — waveform vult nu hele clip
+    // W en bars schalen met clip-breedte — waveform vult hele clip, geen dunne balk
     const Wpx = Math.max(80, Math.round(duration * pps))
     const bars = Math.max(90, Math.min(600, Math.round((duration * 18))))
-    // canvas breedte = clip-breedte in CSS pixels, maar gecapped op 1200 voor performance
     const canvasW = Math.max(120, Math.min(1200, Wpx))
-    const canvasH = 32
+    const canvasH = 44
     const dpr = window.devicePixelRatio || 1
     canvas.width = canvasW * dpr
     canvas.height = canvasH * dpr
     canvas.style.width = '100%'
-    canvas.style.height = '32px'
+    canvas.style.height = '100%'
 
     const drawFallback = (): void => {
       let h = hashStr(seed)
@@ -185,11 +184,42 @@ function Waveform({ assetPath, seed, duration, sourceStart, pps, muted }: { asse
 }
 
 function Filmstrip({ assetPath, thumbnail, isImage }: { assetPath?: string; thumbnail?: string; isImage?: boolean }): JSX.Element {
+  const [genThumb, setGenThumb] = useState<string | null>(null)
+  useEffect(() => {
+    if (isImage || thumbnail || !assetPath) return
+    let cancelled = false
+    const v = document.createElement('video')
+    v.muted = true
+    v.preload = 'auto'
+    v.crossOrigin = 'anonymous'
+    v.src = mediaUrl(assetPath)
+    const onMeta = (): void => {
+      try { v.currentTime = Math.min(0.6, v.duration * 0.15 || 0.6) } catch { /* noop */ }
+    }
+    const onSeek = (): void => {
+      try {
+        const c = document.createElement('canvas')
+        c.width = 320
+        c.height = 180
+        const ctx = c.getContext('2d')
+        if (ctx) {
+          ctx.drawImage(v, 0, 0, c.width, c.height)
+          if (!cancelled) setGenThumb(c.toDataURL('image/jpeg', 0.7))
+        }
+      } catch { /* ignore */ }
+    }
+    v.addEventListener('loadedmetadata', onMeta, { once: true })
+    v.addEventListener('seeked', onSeek, { once: true })
+    v.addEventListener('error', () => { if (!cancelled) setGenThumb(null) }, { once: true })
+    return () => { cancelled = true; try { v.pause(); v.removeAttribute('src'); v.load() } catch { /* noop */ } }
+  }, [assetPath, thumbnail, isImage])
+
   if (isImage && assetPath) {
     return <div className="clip-film single"><span style={{ backgroundImage: `url(${mediaUrl(assetPath)})` }} /></div>
   }
-  if (thumbnail) {
-    return <div className="clip-film single"><span style={{ backgroundImage: `url(${thumbnail})` }} /></div>
+  const src = thumbnail ?? genThumb
+  if (src) {
+    return <div className="clip-film single"><span style={{ backgroundImage: `url(${src})` }} /></div>
   }
   return <div className="clip-fallback">VIDEO</div>
 }
