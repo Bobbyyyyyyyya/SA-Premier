@@ -67,64 +67,70 @@ function hashStr(s: string): number {
 
 function Waveform({ assetPath, seed, duration, sourceStart, pps, muted }: { assetPath?: string; seed: string; duration: number; sourceStart: number; pps: number; muted?: boolean }): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const peaksRef = useRef<number[] | null>(null)
+  const drawRef = useRef<() => void>(() => undefined)
+
+  // teken op de WERKELIJKE clip-maat — geen 1200px-bitmap die gestretched wordt (wordt altijd dun/vervormd)
+  const drawBars = (peaks: number[]): void => {
+    const el = canvasRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const W = Math.max(60, Math.round(rect.width))
+    const H = Math.max(24, Math.round(rect.height))
+    const dpr = window.devicePixelRatio || 1
+    if (el.width !== Math.round(W * dpr) || el.height !== Math.round(H * dpr)) {
+      el.width = Math.round(W * dpr)
+      el.height = Math.round(H * dpr)
+    }
+    const c = el.getContext('2d')
+    if (!c) return
+    c.setTransform(dpr, 0, 0, dpr, 0, 0)
+    c.clearRect(0, 0, W, H)
+
+    // verticale balken zoals Premiere — vult de clip, nooit een "dunne lijn"
+    const n = Math.max(24, Math.min(peaks.length, Math.floor(W / 2.5)))
+    const step = W / n
+    const bw = Math.max(2, Math.min(6, step * 0.62))
+    const max = Math.max(...peaks.slice(0, n), 0.001)
+    c.fillStyle = 'rgba(255,255,255,0.95)'
+    for (let i = 0; i < n; i++) {
+      const v = (peaks[i] ?? 0) / max
+      const h = Math.max(3, v * H * 0.94)
+      const x = i * step + (step - bw) / 2
+      const y = (H - h) / 2
+      const r = Math.min(bw / 2, 2)
+      c.beginPath()
+      if (typeof c.roundRect === 'function') c.roundRect(x, y, bw, h, r)
+      else c.rect(x, y, bw, h)
+      c.fill()
+    }
+    c.strokeStyle = 'rgba(255,255,255,0.35)'
+    c.lineWidth = 1
+    c.beginPath()
+    c.moveTo(0, H / 2)
+    c.lineTo(W, H / 2)
+    c.stroke()
+  }
 
   useEffect(() => {
-    if (!assetPath || !canvasRef.current) return
-    let cancelled = false
-    const canvas = canvasRef.current
-
-    const drawBars = (peaks: number[]): void => {
-      if (cancelled || !canvasRef.current) return
-      const c = canvasRef.current!.getContext('2d')!
-      // canvas is al op juiste W/H gezet (zie hieronder)
-      const W = canvasRef.current!.width / (window.devicePixelRatio || 1)
-      const H = canvasRef.current!.height / (window.devicePixelRatio || 1)
-      const dpr = window.devicePixelRatio || 1
-      c.setTransform(dpr, 0, 0, dpr, 0, 0)
-      c.clearRect(0, 0, W, H)
-      const zoom = useEditorStore.getState().zoom
-      const thick = Math.max(3.2, Math.min(4.8, 2.6 + zoom * 0.9))
-      c.strokeStyle = 'rgba(255,255,255,1)'
-      c.lineWidth = thick
-      c.lineCap = 'round'
-      c.lineJoin = 'round'
-      c.beginPath()
-      const mid = H / 2
-      for (let i = 0; i < peaks.length; i++) {
-        const x = (i / (peaks.length - 1)) * W
-        const h = peaks[i] * (H * 0.5)
-        if (i === 0) c.moveTo(x, mid - h)
-        else c.lineTo(x, mid - h)
-      }
-      for (let i = peaks.length - 1; i >= 0; i--) {
-        const x = (i / (peaks.length - 1)) * W
-        const h = peaks[i] * (H * 0.5)
-        c.lineTo(x, mid + h)
-      }
-      c.closePath()
-      c.fillStyle = 'rgba(255,255,255,0.44)'
-      c.fill()
-      c.stroke()
-      c.strokeStyle = 'rgba(255,255,255,0.45)'
-      c.lineWidth = 1.4
-      c.beginPath()
-      c.moveTo(0, mid)
-      c.lineTo(W, mid)
-      c.stroke()
+    drawRef.current = (): void => {
+      const p = peaksRef.current
+      if (p) drawBars(p)
     }
+    drawRef.current()
+    const el = canvasRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => drawRef.current())
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [pps, duration])
 
-    // W en bars schalen met clip-breedte — waveform vult hele clip, geen dunne balk
-    const Wpx = Math.max(80, Math.round(duration * pps))
-    const bars = Math.max(90, Math.min(600, Math.round((duration * 18))))
-    const canvasW = Math.max(120, Math.min(1200, Wpx))
-    const canvasH = 44
-    const dpr = window.devicePixelRatio || 1
-    canvas.width = canvasW * dpr
-    canvas.height = canvasH * dpr
-    canvas.style.width = '100%'
-    canvas.style.height = '100%'
+  useEffect(() => {
+    if (!assetPath) return
+    let cancelled = false
+    peaksRef.current = null
 
-    const drawFallback = (): void => {
+    const fallbackPeaks = (): number[] => {
       let h = hashStr(seed)
       const rnd = (): number => {
         h = Math.imul(h ^ (h >>> 15), 2246822519)
@@ -132,57 +138,65 @@ function Waveform({ assetPath, seed, duration, sourceStart, pps, muted }: { asse
         h ^= h >>> 16
         return (h >>> 0) / 4294967295
       }
-      const peaks = Array.from({ length: Math.min(bars, 200) }, (_, i) => {
+      return Array.from({ length: 240 }, (_, i) => {
         const env = 0.35 + 0.65 * Math.abs(Math.sin(i / 9 + h % 10))
         return 0.12 + rnd() * 0.88 * env
       })
-      const max = Math.max(...peaks, 0.001)
-      drawBars(peaks.map((v) => v / max))
+    }
+
+    const finish = (peaks: number[]): void => {
+      if (cancelled) return
+      peaksRef.current = peaks
+      drawRef.current()
     }
 
     const url = mediaUrl(assetPath)
-    fetch(url).then((r) => r.arrayBuffer()).then((buf) => {
-      const ACtx = (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)
-      const ctx2 = new ACtx()
-      return ctx2.decodeAudioData(buf.slice(0)).then((decoded) => {
-        if (cancelled) { ctx2.close().catch(() => null); return }
-        const sr = decoded.sampleRate
-        const full = decoded.getChannelData(0)
-        // alleen het stuk dat de clip toont (sourceStart → sourceStart+duration) — anders klopt waveform niet bij trim
-        const s0 = Math.max(0, Math.floor(sourceStart * sr))
-        const s1 = Math.min(full.length, Math.floor((sourceStart + duration) * sr))
-        const data = s0 < s1 ? full.subarray(s0, s1) : full
-        if (!data.length) { drawFallback(); ctx2.close().catch(() => null); return }
-        const step = Math.max(1, Math.floor(data.length / bars))
-        const out: number[] = []
-        for (let i = 0; i < bars; i++) {
-          const center = Math.floor((i + 0.5) * data.length / bars)
-          const win = Math.max(1, Math.floor(step * 0.35))
-          const start = Math.max(0, center - win)
-          const end = Math.min(data.length, center + win)
-          let peak = 0
-          let sum = 0
-          for (let j = start; j < end; j++) {
-            const v = Math.abs(data[j])
-            peak = Math.max(peak, v)
-            sum += v * v
+    fetch(url)
+      .then((r) => r.arrayBuffer())
+      .then((buf) => {
+        const ACtx = (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)
+        const ctx2 = new ACtx()
+        return ctx2.decodeAudioData(buf.slice(0)).then((decoded) => {
+          ctx2.close().catch(() => null)
+          if (cancelled) return
+          const sr = decoded.sampleRate
+          const full = decoded.getChannelData(0)
+          // alleen het stuk dat de clip toont (sourceStart → sourceStart+duration)
+          const s0 = Math.max(0, Math.floor(sourceStart * sr))
+          const s1 = Math.min(full.length, Math.floor((sourceStart + duration) * sr))
+          const data = s0 < s1 ? full.subarray(s0, s1) : full
+          if (!data.length) { finish(fallbackPeaks()); return }
+          const bars = Math.max(120, Math.min(720, Math.round(duration * 24)))
+          const step = Math.max(1, Math.floor(data.length / bars))
+          const out: number[] = []
+          for (let i = 0; i < bars; i++) {
+            const center = Math.floor((i + 0.5) * data.length / bars)
+            const win = Math.max(1, Math.floor(step * 0.4))
+            const start = Math.max(0, center - win)
+            const end = Math.min(data.length, center + win)
+            let peak = 0
+            let sum = 0
+            for (let j = start; j < end; j++) {
+              const v = Math.abs(data[j])
+              peak = Math.max(peak, v)
+              sum += v * v
+            }
+            const rms = Math.sqrt(sum / Math.max(1, end - start))
+            out.push(Math.pow(0.55 * peak + 0.45 * rms, 0.42))
           }
-          const rms = Math.sqrt(sum / Math.max(1, end - start))
-          const shaped = Math.pow(0.55 * peak + 0.45 * rms, 0.48)
-          out.push(shaped)
-        }
-        const max = Math.max(...out, 0.001)
-        const min = Math.min(...out)
-        const range = Math.max(0.02, max - min)
-        drawBars(out.map((v) => 0.06 + ((v - min) / range) * 0.94))
-        ctx2.close().catch(() => null)
-      }).catch(() => drawFallback())
-    }).catch(() => drawFallback())
+          // min-max stretch → stille audio geeft ook volle balken (geen platte lijn)
+          const max = Math.max(...out, 0.001)
+          const min = Math.min(...out)
+          const range = Math.max(0.02, max - min)
+          finish(out.map((v) => 0.08 + ((v - min) / range) * 0.92))
+        })
+      })
+      .catch(() => finish(fallbackPeaks()))
 
     return () => { cancelled = true }
-  }, [assetPath, seed, duration, sourceStart, pps])
+  }, [assetPath, seed, duration, sourceStart])
 
-  return <canvas ref={canvasRef} className="clip-wave-canvas" style={{ opacity: muted ? 0.25 : 1, display: 'block', width: '100%', height: 32 }} />
+  return <canvas ref={canvasRef} className="clip-wave-canvas" style={{ opacity: muted ? 0.25 : 1 }} />
 }
 
 function Filmstrip({ assetPath, thumbnail, isImage }: { assetPath?: string; thumbnail?: string; isImage?: boolean }): JSX.Element {
@@ -194,7 +208,6 @@ function Filmstrip({ assetPath, thumbnail, isImage }: { assetPath?: string; thum
     v.muted = true
     v.preload = 'auto'
     v.crossOrigin = 'anonymous'
-    v.src = mediaUrl(assetPath)
     const onMeta = (): void => {
       try { v.currentTime = Math.min(0.6, v.duration * 0.15 || 0.6) } catch { /* noop */ }
     }
@@ -202,17 +215,18 @@ function Filmstrip({ assetPath, thumbnail, isImage }: { assetPath?: string; thum
       try {
         const c = document.createElement('canvas')
         c.width = 320
-        c.height = 180
+        c.height = Math.max(90, Math.round(320 * (v.videoHeight / Math.max(1, v.videoWidth))) || 180)
         const ctx = c.getContext('2d')
         if (ctx) {
           ctx.drawImage(v, 0, 0, c.width, c.height)
-          if (!cancelled) setGenThumb(c.toDataURL('image/jpeg', 0.7))
+          if (!cancelled) setGenThumb(c.toDataURL('image/jpeg', 0.75))
         }
       } catch { /* ignore */ }
     }
     v.addEventListener('loadedmetadata', onMeta, { once: true })
     v.addEventListener('seeked', onSeek, { once: true })
     v.addEventListener('error', () => { if (!cancelled) setGenThumb(null) }, { once: true })
+    v.src = mediaUrl(assetPath)
     return () => { cancelled = true; try { v.pause(); v.removeAttribute('src'); v.load() } catch { /* noop */ } }
   }, [assetPath, thumbnail, isImage])
 
@@ -221,9 +235,10 @@ function Filmstrip({ assetPath, thumbnail, isImage }: { assetPath?: string; thum
   }
   const src = thumbnail ?? genThumb
   if (src) {
-    return <div className="clip-film single"><span style={{ backgroundImage: `url(${src})` }} /></div>
+    // frame herhalen over hele breedte → echte filmstrip, niet één dun plaatje
+    return <div className="clip-film strip"><span style={{ backgroundImage: `url(${src})` }} /></div>
   }
-  return <div className="clip-fallback">VIDEO</div>
+  return <div className="clip-film placeholder"><span /></div>
 }
 
 /* ---------------- clip ---------------- */

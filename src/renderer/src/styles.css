@@ -669,11 +669,11 @@ select:focus {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 2px;
+  width: 4px;
   background: var(--accent);
   z-index: 30;
   pointer-events: none;
-  box-shadow: 0 0 6px rgba(255, 127, 42, 0.6);
+  box-shadow: 0 0 10px rgba(255, 127, 42, 0.8);
 }
 .tl-playhead::before {
   content: '';
@@ -1608,9 +1608,9 @@ button.small { font-size: 11px; padding: 4px 8px; }
 }
 
 .tl-playhead {
-  width: 3px;
+  width: 4px;
   background: linear-gradient(180deg, #ff9a4a, #ff7f2a 60%, #ff6a00 100%);
-  box-shadow: 0 0 14px rgba(255,127,42,0.95), 0 0 4px rgba(255,127,42,1), 0 0 0 1px rgba(255,255,255,0.35);
+  box-shadow: 0 0 16px rgba(255,127,42,1), 0 0 5px rgba(255,127,42,1), 0 0 0 1.5px rgba(255,255,255,0.4);
   z-index: 30;
 }
 .tl-playhead-cap {
@@ -1653,6 +1653,19 @@ button.small { font-size: 11px; padding: 4px 8px; }
 .clip-film { position: absolute; inset: 0; display: flex; opacity: 0.5; }
 .clip-film span { flex: 1; background-size: cover; background-position: center; border-right: 1px solid rgba(0,0,0,0.35); }
 .clip-film span:last-child { border-right: none; }
+/* video: frame herhalen over volle breedte (filmstrip), niet één klein plaatje */
+.clip-film.strip span {
+  background-size: auto 100%;
+  background-repeat: repeat-x;
+  background-position: left center;
+  border-right: none;
+  box-shadow: inset -1px 0 0 rgba(0,0,0,0.35);
+}
+.clip-film.placeholder span {
+  background:
+    repeating-linear-gradient(90deg, rgba(255,255,255,0.10) 0 28px, rgba(0,0,0,0.22) 28px 30px),
+    linear-gradient(180deg, #3a3a40, #232328);
+}
 .clip-fallback {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   font-size: 9px; font-weight: 800; letter-spacing: 2px; color: rgba(255,255,255,0.5);
@@ -1663,8 +1676,15 @@ button.small { font-size: 11px; padding: 4px 8px; }
 }
 .clip-wave span { flex: 1; min-width: 2px; background: rgba(255,255,255,0.65); border-radius: 2px; }
 .clip-wave-canvas {
-  position: absolute; left: 4px; right: 4px; top: 4px; bottom: 4px;
-  width: auto; height: auto;
+  /* absolute + expliciete width/height: canvas is een replaced element,
+     met alleen inset zouden browser de intrinsic bitmap-maat pakken */
+  position: absolute;
+  left: 4px;
+  top: 14px;
+  width: calc(100% - 8px);
+  height: calc(100% - 17px);
+  display: block;
+  pointer-events: none;
 }
 .clip-top {
   position: absolute; left: 0; right: 0; top: 0;
@@ -1724,7 +1744,7 @@ button.small { font-size: 11px; padding: 4px 8px; }
 .clip.audio { background: linear-gradient(180deg, #3b6ea5 0%, #2f5a8a 100%); border-color: #4a7ab8; }
 .clip.audio:nth-child(3n) { background: linear-gradient(180deg, #2d6b4a 0%, #1e5a3c 100%); border-color: #3a7a5a; } /* variatie voor master-achtige track zoals in foto */
 .clip .clip-wave span { background: rgba(255,255,255,0.75); }
-.clip-film { opacity: 0.92; }
+.clip-film { opacity: 0.95; }
 .clip-top { background: linear-gradient(180deg, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.35) 60%, transparent 100%); padding: 2px 6px; }
 .clip-name { font-size: 10px; font-weight: 600; }
 .clip-dur { font-size: 8px; }
