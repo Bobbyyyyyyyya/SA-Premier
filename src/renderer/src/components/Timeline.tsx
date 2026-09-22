@@ -82,36 +82,36 @@ function Waveform({ assetPath, seed, duration, sourceStart, pps, muted }: { asse
       const dpr = window.devicePixelRatio || 1
       c.setTransform(dpr, 0, 0, dpr, 0, 0)
       c.clearRect(0, 0, W, H)
-      c.strokeStyle = 'rgba(255,255,255,0.95)'
-      c.lineWidth = 1.9
+      c.strokeStyle = 'rgba(255,255,255,1)'
+      c.lineWidth = 2.2
       c.lineCap = 'round'
       c.lineJoin = 'round'
       c.beginPath()
       const mid = H / 2
       for (let i = 0; i < peaks.length; i++) {
         const x = (i / (peaks.length - 1)) * W
-        const h = peaks[i] * (H * 0.48)
+        const h = peaks[i] * (H * 0.5)
         if (i === 0) c.moveTo(x, mid - h)
         else c.lineTo(x, mid - h)
       }
       for (let i = peaks.length - 1; i >= 0; i--) {
         const x = (i / (peaks.length - 1)) * W
-        const h = peaks[i] * (H * 0.48)
+        const h = peaks[i] * (H * 0.5)
         c.lineTo(x, mid + h)
       }
       c.closePath()
-      c.fillStyle = 'rgba(255,255,255,0.26)'
+      c.fillStyle = 'rgba(255,255,255,0.34)'
       c.fill()
       c.stroke()
-      c.strokeStyle = 'rgba(255,255,255,0.28)'
-      c.lineWidth = 0.8
+      c.strokeStyle = 'rgba(255,255,255,0.32)'
+      c.lineWidth = 1
       c.beginPath()
       c.moveTo(0, mid)
       c.lineTo(W, mid)
       c.stroke()
     }
 
-    // W en bars schalen met clip-breedte zodat grote nummers niet 1 dikke streep worden
+    // W en bars schalen met clip-breedte zodat grote nummers niet 1 dikke streep worden — waveform vult nu hele clip
     const Wpx = Math.max(80, Math.round(duration * pps))
     const bars = Math.max(90, Math.min(600, Math.round((duration * 18))))
     // canvas breedte = clip-breedte in CSS pixels, maar gecapped op 1200 voor performance
