@@ -1719,7 +1719,7 @@ button.small { font-size: 11px; padding: 4px 8px; }
 .th-controls button.active.warn { background: #6b2a2a; border-color: #8a3a3a; }
 .tl-body { background: #0f0f10; }
 .tl-ruler { background: #1e1e20; border-bottom: 1px solid #2a2a2e; }
-.clip { top: 5px; bottom: 5px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.08); }
+.clip { top: 3px; bottom: 3px; border-radius: 4px; border: 1.5px solid rgba(255,255,255,0.14); }
 .clip.video { background: #2a2a2e; }
 .clip.audio { background: linear-gradient(180deg, #3b6ea5 0%, #2f5a8a 100%); border-color: #4a7ab8; }
 .clip.audio:nth-child(3n) { background: linear-gradient(180deg, #2d6b4a 0%, #1e5a3c 100%); border-color: #3a7a5a; } /* variatie voor master-achtige track zoals in foto */

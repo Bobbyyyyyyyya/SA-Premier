@@ -6,7 +6,7 @@ import { mediaUrl } from '../lib/mediaUrl'
 import type { Asset, Clip, Track } from '../../../shared/types'
 import { IconEye, IconEyeOff, IconLock, IconUnlock, IconVolume, IconMute, IconSnap, IconFollow, IconStart, IconEnd, IconCut, IconCopy, IconTrash, IconPalette, IconMusic, IconBox } from './icons'
 
-const ROW_H = 54
+const ROW_H = 60
 const RULER_H = 28
 const MIN_CLIP = 0.1
 
@@ -83,7 +83,7 @@ function Waveform({ assetPath, seed, duration, sourceStart, pps, muted }: { asse
       c.setTransform(dpr, 0, 0, dpr, 0, 0)
       c.clearRect(0, 0, W, H)
       const zoom = useEditorStore.getState().zoom
-      const thick = Math.max(2.2, Math.min(3.4, 1.8 + zoom * 0.7))
+      const thick = Math.max(3.2, Math.min(4.8, 2.6 + zoom * 0.9))
       c.strokeStyle = 'rgba(255,255,255,1)'
       c.lineWidth = thick
       c.lineCap = 'round'
@@ -102,11 +102,11 @@ function Waveform({ assetPath, seed, duration, sourceStart, pps, muted }: { asse
         c.lineTo(x, mid + h)
       }
       c.closePath()
-      c.fillStyle = 'rgba(255,255,255,0.38)'
+      c.fillStyle = 'rgba(255,255,255,0.44)'
       c.fill()
       c.stroke()
-      c.strokeStyle = 'rgba(255,255,255,0.38)'
-      c.lineWidth = 1.1
+      c.strokeStyle = 'rgba(255,255,255,0.45)'
+      c.lineWidth = 1.4
       c.beginPath()
       c.moveTo(0, mid)
       c.lineTo(W, mid)
@@ -714,6 +714,40 @@ export default function Timeline(): JSX.Element {
   const contentW = Math.max((total + 30) * pps, 900)
 
   const selectedClip = useMemo(() => clips.find((c) => c.id === selectedClipId) ?? null, [clips, selectedClipId])
+
+  // Fix: clips met ongeldige trackId (na reset) meteen herstellen zodat ze wel getoond worden
+  useEffect(() => {
+    const s = useEditorStore.getState()
+    let changed = false
+    const fixed = s.clips.map((c) => {
+      if (s.tracks.some((t) => t.id === c.trackId)) return c
+      const fallback = s.tracks.find((t) => t.kind === (c.kind === 'audio' ? 'audio' : 'video')) ?? s.tracks[0]
+      if (!fallback) return c
+      changed = true
+      return { ...c, trackId: fallback.id }
+    })
+    if (changed) useEditorStore.setState({ clips: fixed })
+  }, [clips, tracks])
+
+  // Auto-fit bij grote projecten zodat je niet naar leeg 00:00 kijkt terwijl clip op 06:00 staat
+  useEffect(() => {
+    if (!bodyRef.current || total < 30) return
+    const w = bodyRef.current.clientWidth
+    if ((total + 30) * pps > w * 1.15) {
+      // alleen 1x auto-fitten bij eerste grote load
+      const key = 'sa-autofit-done-' + Math.round(total)
+      try {
+        if (sessionStorage.getItem(key)) return
+        sessionStorage.setItem(key, '1')
+      } catch { /* noop */ }
+      const target = total + 4
+      const next = Math.max(0.25, Math.min(4, w / target / 60))
+      useEditorStore.getState().setZoom(next)
+      requestAnimationFrame(() => {
+        if (bodyRef.current) bodyRef.current.scrollLeft = 0
+      })
+    }
+  }, [total, pps])
 
   // Zorg dat clips altijd in beeld komen (fix: bij 06:04 totaal stond alles buiten viewport)
   useEffect(() => {
