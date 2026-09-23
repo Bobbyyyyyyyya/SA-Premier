@@ -123,13 +123,17 @@ export const useEditorStore = create<EditorState>()(
       const { assets, tracks, clips } = get()
       const asset = assets.find((a) => a.id === assetId)
       if (!asset) return
-      let track = tracks.find((t) => t.id === trackId)
-      if (asset.type === 'audio') {
-        if (!track || track.kind !== 'audio') track = tracks.find((t) => t.kind === 'audio')
-      } else {
-        if (!track || track.kind !== 'video') track = tracks.find((t) => t.kind === 'video')
+      const wantKind: TrackKind = asset.type === 'audio' ? 'audio' : 'video'
+      // audio → alleen audio-track; video → alleen video-track (nooit omwisselen)
+      let track = tracks.find((t) => t.id === trackId && t.kind === wantKind)
+      if (!track) track = tracks.find((t) => t.kind === wantKind)
+      let extraTracks: Track[] | null = null
+      if (!track) {
+        // geen passende track → aanmaken i.p.v. op verkeerde track plaatsen
+        const idx = tracks.filter((t) => t.kind === wantKind).length + 1
+        track = makeTrack(uid(), `${wantKind === 'video' ? 'Video' : 'Audio'} ${idx}`, wantKind)
+        extraTracks = [...tracks, track]
       }
-      if (!track) return
       const roundedStart = Math.max(0, start)
       // voorkom dubbele clip op zelfde track/tijd/asset (double-play bug)
       const exists = clips.some((c) => c.assetId === assetId && c.trackId === track!.id && Math.abs(c.start - roundedStart) < 0.02 && Math.abs(c.duration - (asset.duration > 0 ? asset.duration : 5)) < 0.02)
@@ -148,7 +152,11 @@ export const useEditorStore = create<EditorState>()(
         transitionOut: null,
         kind: asset.type
       }
-      set((s) => ({ clips: [...s.clips, clip], selectedClipId: clip.id }))
+      set((s) => ({
+        tracks: extraTracks ?? s.tracks,
+        clips: [...s.clips, clip],
+        selectedClipId: clip.id
+      }))
     },
 
     addTextClip: (trackId, start, text) => {
@@ -183,7 +191,20 @@ export const useEditorStore = create<EditorState>()(
     },
 
     updateClip: (id, patch) =>
-      set((s) => ({ clips: s.clips.map((c) => (c.id === id ? { ...c, ...patch } : c)) })),
+      set((s) => ({
+        clips: s.clips.map((c) => {
+          if (c.id !== id) return c
+          const next = { ...c, ...patch }
+          // audio clips mogen nooit op een videotrack (en vice versa)
+          if (patch.trackId) {
+            const target = s.tracks.find((t) => t.id === next.trackId)
+            if (!target) return c
+            const want = next.kind === 'audio' ? 'audio' : 'video'
+            if (target.kind !== want) return c
+          }
+          return next
+        })
+      })),
 
     removeClip: (id) =>
       set((s) => ({

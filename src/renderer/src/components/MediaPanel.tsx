@@ -7,6 +7,12 @@ import AiPanel from './AiPanel'
 import type { ClipEffects } from '../../../shared/types'
 import { DEFAULT_EFFECTS } from '../../../shared/types'
 
+// drag-type delen met Timeline (dragover mag getData niet lezen)
+export let dragAssetType: 'video' | 'audio' | null = null
+export const setDragAssetType = (t: 'video' | 'audio' | null): void => {
+  dragAssetType = t
+}
+
 const PRESETS: Array<{ cat: string; name: string; fx: Partial<ClipEffects> }> = [
   { cat: 'Basic', name: 'Normal', fx: { ...DEFAULT_EFFECTS } },
 
@@ -39,7 +45,6 @@ export default function MediaPanel(): JSX.Element {
   const [tab, setTab] = useState<'media' | 'effects' | 'ai'>('media')
   const [importing, setImporting] = useState(false)
   const assets = useEditorStore((s) => s.assets)
-  const tracks = useEditorStore((s) => s.tracks)
   const playhead = useEditorStore((s) => s.playhead)
   const addClip = useEditorStore((s) => s.addClip)
   const removeAsset = useEditorStore((s) => s.removeAsset)
@@ -58,12 +63,11 @@ export default function MediaPanel(): JSX.Element {
   const addAtPlayhead = (assetId: string): void => {
     const s = useEditorStore.getState()
     const asset = s.assets.find((a) => a.id === assetId)
-    const track = asset
-      ? asset.type === 'audio'
-        ? s.tracks.find((t) => t.kind === 'audio') ?? tracks[0]
-        : s.tracks.find((t) => t.kind === 'video') ?? tracks[0]
-      : tracks[0]
+    // audio → alleen audio-track; video → alleen video-track (addClip maakt track aan als die ontbreekt)
+    const want = asset?.type === 'audio' ? 'audio' : 'video'
+    const track = s.tracks.find((t) => t.kind === want)
     if (track) addClip(assetId, track.id, playhead)
+    else addClip(assetId, '', playhead)
   }
 
   const applyPreset = (fx: Partial<ClipEffects>): void => {
@@ -107,8 +111,11 @@ export default function MediaPanel(): JSX.Element {
                 onDragStart={(e) => {
                   e.dataTransfer.effectAllowed = 'copy'
                   e.dataTransfer.setData('application/x-asset', a.id)
+                  e.dataTransfer.setData('application/x-asset-type', a.type)
                   e.dataTransfer.setData('text/plain', a.id)
+                  setDragAssetType(a.type)
                 }}
+                onDragEnd={() => setDragAssetType(null)}
                 onDoubleClick={() => addAtPlayhead(a.id)}
                 title="Dubbelklik = op playhead zetten · sleep naar timeline"
               >

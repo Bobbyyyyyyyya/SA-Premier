@@ -5,6 +5,7 @@ import { importPaths } from '../lib/inspect'
 import { mediaUrl } from '../lib/mediaUrl'
 import type { Asset, Clip, Track } from '../../../shared/types'
 import { IconEye, IconEyeOff, IconLock, IconUnlock, IconVolume, IconMute, IconSnap, IconFollow, IconStart, IconEnd, IconCut, IconCopy, IconTrash, IconPalette, IconMusic, IconBox } from './icons'
+import { dragAssetType } from './MediaPanel'
 
 const ROW_H = 60
 const RULER_H = 28
@@ -664,6 +665,23 @@ function TrackRow({
     setIsOver(false)
     const assetId = e.dataTransfer.getData('application/x-asset') || e.dataTransfer.getData('text/plain')
     if (assetId) {
+      const s = useEditorStore.getState()
+      const asset = s.assets.find((a) => a.id === assetId.trim())
+      // audio → alleen op audio-track; video → alleen op video-track
+      if (asset) {
+        const want = asset.type === 'audio' ? 'audio' : 'video'
+        if (track.kind !== want) {
+          const alt = s.tracks.find((x) => x.kind === want)
+          if (alt) {
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+            const t = clamp((e.clientX - rect.left) / pps, 0, 99999)
+            pausePlayback()
+            addClip(asset.id, alt.id, snapTime(t, undefined, snapEnabled))
+            return
+          }
+          // geen passende track → addClip maakt hem aan
+        }
+      }
       placeAt(e.clientX, e.currentTarget as HTMLElement, assetId.trim())
       return
     }
@@ -678,11 +696,9 @@ function TrackRow({
       paths.forEach((p, i) => {
         const asset = s.assets.find((a) => a.path === p)
         if (!asset) return
-        const target =
-          asset.type === 'audio'
-            ? track.kind === 'audio' ? track.id : s.tracks.find((x) => x.kind === 'audio')?.id
-            : track.kind === 'video' ? track.id : s.tracks.find((x) => x.kind === 'video')?.id
-        if (target) s.addClip(asset.id, target, dropT + i * 0.1)
+        const want = asset.type === 'audio' ? 'audio' : 'video'
+        const target = track.kind === want ? track.id : s.tracks.find((x) => x.kind === want)?.id
+        s.addClip(asset.id, target ?? track.id, dropT + i * 0.1)
       })
     })
   }
@@ -699,7 +715,20 @@ function TrackRow({
     <div
       className={`tl-row ${track.muted ? 'muted' : ''} ${isOver ? 'dragover' : ''}`}
       style={{ width: contentW, height: ROW_H }}
-      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; setIsOver(true) }}
+      onDragOver={(e) => {
+        e.preventDefault()
+        // audio mag niet op video-row (en vice versa) — rood, geen drop
+        if (dragAssetType) {
+          const want = dragAssetType
+          if (track.kind !== want) {
+            e.dataTransfer.dropEffect = 'none'
+            setIsOver(false)
+            return
+          }
+        }
+        e.dataTransfer.dropEffect = 'copy'
+        setIsOver(true)
+      }}
       onDragLeave={() => setIsOver(false)}
       onDrop={onDrop}
       onPointerDown={(e) => {
@@ -771,13 +800,15 @@ export default function Timeline(): JSX.Element {
 
   const selectedClip = useMemo(() => clips.find((c) => c.id === selectedClipId) ?? null, [clips, selectedClipId])
 
-  // Fix: clips met ongeldige trackId (na reset) meteen herstellen zodat ze wel getoond worden
+  // Fix: clips op verkeerde/ongeldige track → herstellen naar compatible track
   useEffect(() => {
     const s = useEditorStore.getState()
     let changed = false
     const fixed = s.clips.map((c) => {
-      if (s.tracks.some((t) => t.id === c.trackId)) return c
-      const fallback = s.tracks.find((t) => t.kind === (c.kind === 'audio' ? 'audio' : 'video')) ?? s.tracks[0]
+      const want = c.kind === 'audio' ? 'audio' : 'video'
+      const t = s.tracks.find((x) => x.id === c.trackId)
+      if (t && t.kind === want) return c
+      const fallback = s.tracks.find((x) => x.kind === want)
       if (!fallback) return c
       changed = true
       return { ...c, trackId: fallback.id }

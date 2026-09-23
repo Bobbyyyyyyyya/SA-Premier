@@ -173,14 +173,22 @@ export async function importPaths(paths: string[], opts?: { place?: boolean }): 
   if (opts?.place !== false) {
     let t = s.playhead
     for (const a of assets) {
-      const trackId =
-        a.type === 'audio'
-          ? s.tracks.find((x) => x.kind === 'audio')?.id
-          : s.tracks.find((x) => x.kind === 'video')?.id
+      // audio → alleen audio-track; video → alleen video-track
+      const want = a.type === 'audio' ? 'audio' : 'video'
+      let trackId = s.tracks.find((x) => x.kind === want)?.id ?? ''
+      if (!trackId) {
+        s.addTrack(want)
+        trackId = useEditorStore.getState().tracks.find((x) => x.kind === want)?.id ?? ''
+      }
       if (!trackId) continue
       s.addClip(a.id, trackId, t)
       if (a.type === 'video' && a.hasAudio) {
-        const audioTrackId = s.tracks.find((x) => x.kind === 'audio')?.id
+        const st2 = useEditorStore.getState()
+        let audioTrackId = st2.tracks.find((x) => x.kind === 'audio')?.id
+        if (!audioTrackId) {
+          st2.addTrack('audio')
+          audioTrackId = useEditorStore.getState().tracks.find((x) => x.kind === 'audio')?.id
+        }
         if (audioTrackId) {
           const already = useEditorStore.getState().clips.some((c) => c.kind === 'audio' && c.assetId === a.id && Math.abs(c.start - Math.max(0, t)) < 0.02)
           if (!already) {
