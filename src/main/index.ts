@@ -7,6 +7,7 @@ import { cancelExport, extractAudioToFile, ffmpegBin, startExport } from './expo
 import * as ai from './ai'
 import * as comfy from './comfyui'
 import * as musicAi from './music-ai'
+import * as transcribe from './transcribe'
 import * as project from './project'
 import * as aiSetup from './ai-setup'
 import { addRecent, clearRecents, loadRecents } from './recents'
@@ -286,6 +287,25 @@ function registerIpc(): void {
     })
   })
   ipcMain.handle('music-uninstall', (_e, name: string) => musicAi.uninstallMusicModel(name))
+
+  ipcMain.handle('whisper-status', () => transcribe.whisperStatus())
+  ipcMain.handle('whisper-catalog', () => transcribe.WHISPER_CATALOG)
+  ipcMain.handle('whisper-install-cli', (event) =>
+    transcribe.installWhisperCli((p) => {
+      if (!event.sender.isDestroyed()) event.sender.send('whisper-install-progress', p)
+    })
+  )
+  ipcMain.handle('whisper-install', (event, id: string) =>
+    transcribe.installWhisperModel(id, (p) => {
+      if (!event.sender.isDestroyed()) event.sender.send('whisper-install-progress', p)
+    })
+  )
+  ipcMain.handle('subtitles-generate', async (event, req: Parameters<typeof transcribe.generateSubtitles>[0]) => {
+    return transcribe.generateSubtitles(req, (p) => {
+      if (!event.sender.isDestroyed()) event.sender.send('subtitles-progress', p)
+    })
+  })
+  ipcMain.handle('subtitles-cancel', () => transcribe.cancelTranscribe())
 
   ipcMain.handle('extract-audio', async (event, inPath: string, opts?: { start?: number; duration?: number; name?: string }) => {
     const win = BrowserWindow.fromWebContents(event.sender)

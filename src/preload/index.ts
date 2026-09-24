@@ -14,7 +14,11 @@ import type {
   MusicStatus,
   OllamaModelInfo,
   RecentMediaItem,
-  SavedProject
+  SavedProject,
+  TranscribeProgress,
+  TranscribeRequest,
+  TranscribeResult,
+  TranscribeStatus
 } from '../shared/types'
 
 const api = {
@@ -88,6 +92,24 @@ const api = {
     const listener = (_e: Electron.IpcRendererEvent, p: AiMusicProgress): void => cb(p)
     ipcRenderer.on('music-progress', listener)
     return () => ipcRenderer.removeListener('music-progress', listener)
+  },
+
+  whisperStatus: (): Promise<TranscribeStatus> => ipcRenderer.invoke('whisper-status'),
+  whisperCatalog: (): Promise<CatalogModel[]> => ipcRenderer.invoke('whisper-catalog'),
+  whisperInstallCli: (): Promise<InstallProgress> => ipcRenderer.invoke('whisper-install-cli'),
+  whisperInstall: (id: string): Promise<InstallProgress> => ipcRenderer.invoke('whisper-install', id),
+  subtitlesGenerate: (req: TranscribeRequest): Promise<TranscribeResult> =>
+    ipcRenderer.invoke('subtitles-generate', req),
+  subtitlesCancel: (): Promise<void> => ipcRenderer.invoke('subtitles-cancel'),
+  onSubtitlesProgress: (cb: (p: TranscribeProgress) => void): (() => void) => {
+    const listener = (_e: Electron.IpcRendererEvent, p: TranscribeProgress): void => cb(p)
+    ipcRenderer.on('subtitles-progress', listener)
+    return () => ipcRenderer.removeListener('subtitles-progress', listener)
+  },
+  onWhisperInstallProgress: (cb: (p: InstallProgress) => void): (() => void) => {
+    const listener = (_e: Electron.IpcRendererEvent, p: InstallProgress): void => cb(p)
+    ipcRenderer.on('whisper-install-progress', listener)
+    return () => ipcRenderer.removeListener('whisper-install-progress', listener)
   },
 
   projectLoad: (): Promise<SavedProject | null> => ipcRenderer.invoke('project-load'),

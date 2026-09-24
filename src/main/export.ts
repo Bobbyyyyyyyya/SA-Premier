@@ -109,7 +109,9 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
       fx.push(`fps=${fps}`)
       fx.push(...effectFilters(c.effects))
       fx.push('format=rgba')
-      if (c.transitionIn) fx.push(`fade=t=in:st=0:d=${n(c.transitionIn.duration)}:alpha=1`)
+      if (c.transitionIn) {
+        fx.push(`fade=t=in:st=0:d=${n(c.transitionIn.duration)}:alpha=1`)
+      }
       if (c.transitionOut) {
         fx.push(`fade=t=out:st=${n(c.duration - c.transitionOut.duration)}:d=${n(c.transitionOut.duration)}:alpha=1`)
       }
@@ -128,9 +130,18 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
         // skip: audio komt via de aparte audio-clip
       } else {
         const al = 'a' + c.id
+        const af: string[] = []
+        if (c.transitionIn) {
+          af.push(`afade=t=in:st=0:d=${n(c.transitionIn.duration)}`)
+        }
+        if (c.transitionOut) {
+          af.push(`afade=t=out:st=${n(Math.max(0, c.duration - c.transitionOut.duration))}:d=${n(c.transitionOut.duration)}`)
+        }
+        const afx = af.length ? af.join(',') + ',' : ''
         graph.push(
           `[${idx}:a]atrim=start=${n(c.sourceStart)}:end=${n(c.sourceStart + c.duration)},` +
           `asetpts=PTS-STARTPTS,volume=${n(Math.max(0, c.volume))},` +
+          `${afx}` +
           `asetpts=PTS+${n(c.start)}/TB,aformat=sample_rates=48000:channel_layouts=stereo[${al}]`
         )
         audioLabels.push(`[${al}]`)
@@ -187,14 +198,33 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
     const esc = (s: string): string => s.replace(/\\/g, '\\\\\\\\').replace(/:/g, '\\\\:').replace(/'/g, '\\\\\\\'').replace(/%/g, '\\\\%')
     const fontPaths: Record<string, string> = {
       Arial: '/System/Library/Fonts/Supplemental/Arial.ttf',
-      Helvetica: '/System/Library/Fonts/Helvetica.ttc',
       'Arial Black': '/System/Library/Fonts/Supplemental/Arial Black.ttf',
+      'Arial Narrow': '/System/Library/Fonts/Supplemental/Arial Narrow.ttf',
+      Helvetica: '/System/Library/Fonts/Helvetica.ttc',
+      'Helvetica Neue': '/System/Library/Fonts/HelveticaNeue.ttc',
       Georgia: '/System/Library/Fonts/Supplemental/Georgia.ttf',
       'Times New Roman': '/System/Library/Fonts/Supplemental/Times New Roman.ttf',
+      Times: '/System/Library/Fonts/Supplemental/Times New Roman.ttf',
       Courier: '/System/Library/Fonts/Courier.ttc',
+      'Courier New': '/System/Library/Fonts/Supplemental/Courier New.ttf',
       Impact: '/System/Library/Fonts/Supplemental/Impact.ttf',
       Tahoma: '/System/Library/Fonts/Supplemental/Tahoma.ttf',
-      Verdana: '/System/Library/Fonts/Supplemental/Verdana.ttf'
+      Verdana: '/System/Library/Fonts/Supplemental/Verdana.ttf',
+      'Trebuchet MS': '/System/Library/Fonts/Supplemental/Trebuchet MS.ttf',
+      Palatino: '/System/Library/Fonts/Supplemental/Palatino.ttc',
+      Baskerville: '/System/Library/Fonts/Baskerville.ttc',
+      Futura: '/System/Library/Fonts/Futura.ttc',
+      Avenir: '/System/Library/Fonts/Avenir.ttc',
+      'Avenir Next': '/System/Library/Fonts/Avenir Next.ttc',
+      'Gill Sans': '/System/Library/Fonts/Gill Sans.ttc',
+      Optima: '/System/Library/Fonts/Optima.ttc',
+      Menlo: '/System/Library/Fonts/Menlo.ttc',
+      Monaco: '/System/Library/Fonts/Monaco.ttf',
+      Geneva: '/System/Library/Fonts/Supplemental/Geneva.ttf',
+      'American Typewriter': '/System/Library/Fonts/Supplemental/American Typewriter.ttc',
+      Rockwell: '/System/Library/Fonts/Supplemental/Rockwell.ttc',
+      'Marker Felt': '/System/Library/Fonts/Marker Felt.ttc',
+      'Comic Sans MS': '/System/Library/Fonts/Supplemental/Comic Sans MS.ttf'
     }
     let prev = '[vout]'
     const scale = height / 1080
@@ -202,14 +232,101 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
       const t = c.text!
       const outLbl = i === textClips.length - 1 ? 'vout2' : `tx${i}`
       const fontSize = Math.max(8, Math.round(t.fontSize * scale))
-      const x = Math.round(t.x * width)
-      const y = Math.round(t.y * height)
+      // in + out niet laten overlappen bij korte clips
+      const animDur = Math.max(0.05, Math.min(t.animDuration ?? 0.45, c.duration / 2))
+      const animIn = t.animIn && t.animIn !== 'none' ? t.animIn : null
+      const animOut = t.animOut && t.animOut !== 'none' ? t.animOut : null
+
+      // positie + simpele in/out slide
+      let xExpr = String(Math.round(t.x * width))
+      let yExpr = String(Math.round(t.y * height))
+      const travel = Math.round(t.fontSize * scale * 1.1)
+      const slide = (dir: 'up' | 'down' | 'left' | 'right', when: 'in' | 'out'): void => {
+        const start = when === 'in' ? c.start : c.start + c.duration - animDur
+        const progress = `(min(max((t-${n(start)})/${n(animDur)},0),1))`
+        // out: progress 0→1 tijdens out (van rustpositie naar travel); in: off = travel*(1-p)
+        if (dir === 'up') {
+          if (when === 'in') {
+            const off = `(${travel}*(1-${progress}))`
+            yExpr = `(${Math.round(t.y * height)}+${off})`
+          } else {
+            yExpr = `(${Math.round(t.y * height)}-${travel}*${progress})`
+          }
+        } else if (dir === 'down') {
+          if (when === 'in') {
+            const off = `(${travel}*(1-${progress}))`
+            yExpr = `(${Math.round(t.y * height)}-${off})`
+          } else {
+            yExpr = `(${Math.round(t.y * height)}+${travel}*${progress})`
+          }
+        } else if (dir === 'left') {
+          if (when === 'in') {
+            const off = `(${Math.round(travel * 1.4)}*(1-${progress}))`
+            xExpr = `(${Math.round(t.x * width)}+${off})`
+          } else {
+            xExpr = `(${Math.round(t.x * width)}-${Math.round(travel * 1.4)}*${progress})`
+          }
+        } else {
+          if (when === 'in') {
+            const off = `(${Math.round(travel * 1.4)}*(1-${progress}))`
+            xExpr = `(${Math.round(t.x * width)}-${off})`
+          } else {
+            xExpr = `(${Math.round(t.x * width)}+${Math.round(travel * 1.4)}*${progress})`
+          }
+        }
+      }
+      if (animIn === 'slideUp') slide('up', 'in')
+      else if (animIn === 'slideDown') slide('down', 'in')
+      else if (animIn === 'slideLeft') slide('left', 'in')
+      else if (animIn === 'slideRight') slide('right', 'in')
+      if (animOut === 'slideUp') slide('up', 'out')
+      else if (animOut === 'slideDown') slide('down', 'out')
+      else if (animOut === 'slideLeft') slide('left', 'out')
+      else if (animOut === 'slideRight') slide('right', 'out')
+
+      const fadeLike = (a: string | null): boolean =>
+        a === 'fade' || a === 'blurIn' || a === 'pop' || a === 'zoomIn' || a === 'bounce' || a === 'spinIn' || a === 'typewriter'
+      let alphaExpr = '1'
+      const inEnd = c.start + animDur
+      const outStart = c.start + c.duration - animDur
+      const outEnd = c.start + c.duration
+      if (fadeLike(animIn)) {
+        alphaExpr = `if(lt(t\\,${n(inEnd)})\\,(t-${n(c.start)})/${n(animDur)}\\,1)`
+      }
+      if (fadeLike(animOut)) {
+        const outA = `if(gt(t\\,${n(outStart)})\\,(${n(outEnd)}-t)/${n(animDur)}\\,1)`
+        alphaExpr = alphaExpr === '1' ? outA : `mul(${alphaExpr}\\,${outA})`
+      }
+      const opacity = t.opacity ?? 1
+      if (opacity < 0.999) {
+        alphaExpr = alphaExpr === '1' ? String(opacity) : `mul(${alphaExpr}\\,${opacity})`
+      }
+      const alphaOpt = alphaExpr === '1' ? '' : `:alpha='${alphaExpr}'`
+
       const enable = `enable='between(t\\,${n(c.start)}\\,${n(c.start + c.duration)})'`
       const fontfile = fontPaths[t.fontFamily] ?? '/System/Library/Fonts/Supplemental/Arial.ttf'
       const hasBox = t.bgColor && !/transparent/i.test(t.bgColor)
-      const drawtext = `drawtext=text='${esc(t.text)}':fontsize=${fontSize}:fontcolor=${t.color}:x=${x}:y=${y}:shadowcolor=black@0.6:shadowx=2:shadowy=2:fontfile='${esc(fontfile)}'`
-      const boxOpt = hasBox ? `:box=1:boxcolor=${t.bgColor}@0.8:boxborderw=${Math.max(4, Math.round(10 * scale))}` : ''
-      graph.push(`${prev}${drawtext}${boxOpt}:${enable}[${outLbl}]`)
+      const fontColor = t.color === 'transparent' ? '0x00000000' : t.color
+      const borderw = t.strokeWidth && t.strokeWidth > 0 ? Math.max(0, Math.round(t.strokeWidth * scale)) : 0
+      const bordercolor = t.strokeColor && t.strokeColor !== 'transparent' ? t.strokeColor : 'black@0'
+      const shadowColor =
+        t.shadowColor && !/transparent/i.test(t.shadowColor)
+          ? t.shadowColor.replace(/^rgba?\(([^)]+)\)$/, (_m, rgb: string) => {
+              const parts = rgb.split(',').map((x) => x.trim())
+              const a = parts[3] !== undefined ? `@${Number(parts[3]).toFixed(2)}` : '@1'
+              return `0x${parts
+                .slice(0, 3)
+                .map((x) => Number(x).toString(16).padStart(2, '0'))
+                .join('')}${a}`
+            })
+          : 'black@0'
+      const letterSpacing =
+        t.letterSpacing && t.letterSpacing > 0 ? `:letter_spacing=${Math.round(t.letterSpacing * scale)}` : ''
+
+      const drawtext = `drawtext=text='${esc(t.text).replace(/\n/g, '\\\\n')}':fontsize=${fontSize}:fontcolor=${fontColor}:x=${xExpr}:y=${yExpr}:shadowcolor=${shadowColor}:shadowx=${Math.round(t.shadowX ?? 0)}:shadowy=${Math.round(t.shadowY ?? 0)}:fontfile='${esc(fontfile)}'`
+      const boxOpt = hasBox ? `:box=1:boxcolor=${t.bgColor}@0.85:boxborderw=${Math.max(4, Math.round(12 * scale))}` : ''
+      const strokeOpt = borderw > 0 ? `:borderw=${borderw}:bordercolor=${bordercolor}` : ''
+      graph.push(`${prev}${drawtext}${boxOpt}${strokeOpt}${letterSpacing}${alphaOpt}:${enable}[${outLbl}]`)
       prev = `[${outLbl}]`
     })
   }

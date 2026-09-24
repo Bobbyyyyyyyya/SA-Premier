@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useEditorStore, selectTotal } from '../store'
-import { renderFrame } from '../lib/compositor'
+import { renderFrame, clipAudioGain } from '../lib/compositor'
 import { PlayerManager } from '../lib/player'
 import { formatTime } from '../lib/format'
 import { IconMute, IconVolume, IconVolumeLow } from './icons'
@@ -18,6 +18,8 @@ export default function PreviewPlayer(): JSX.Element {
   const total = useEditorStore(selectTotal)
   const timeRef = useRef<HTMLSpanElement | null>(null)
   const scrubRef = useRef<HTMLInputElement | null>(null)
+  // alleen seeken als muis bewust op de scrub-balk staat (geen toevallig overheen swipen/wielen)
+  const scrubbingRef = useRef(false)
 
   if (!playersRef.current) playersRef.current = new PlayerManager()
 
@@ -113,7 +115,7 @@ export default function PreviewPlayer(): JSX.Element {
           muted,
           t,
           true,
-          clip.volume
+          clip.volume * clipAudioGain(clip, t)
         )
       }
       renderFrameAt(t)
@@ -144,7 +146,7 @@ export default function PreviewPlayer(): JSX.Element {
             for (const clip of s.clips) {
               if (clip.kind === 'text') continue
               const track = s.tracks.find((x) => x.id === clip.trackId)
-              players.seekTo(clip.id, clip.start, clip.duration, clip.sourceStart, s.playhead, clip.volume, track?.muted ?? false)
+              players.seekTo(clip.id, clip.start, clip.duration, clip.sourceStart, s.playhead, clip.volume * clipAudioGain(clip, s.playhead), track?.muted ?? false)
             }
           }
         }
@@ -162,7 +164,7 @@ export default function PreviewPlayer(): JSX.Element {
           const asset = s.assets.find((a) => a.id === clip.assetId)
           const track = s.tracks.find((x) => x.id === clip.trackId)
           if (asset) players.element(clip.id, asset, clip.kind)
-          players.seekTo(clip.id, clip.start, clip.duration, clip.sourceStart, s.playhead, clip.volume, track?.muted ?? false)
+          players.seekTo(clip.id, clip.start, clip.duration, clip.sourceStart, s.playhead, clip.volume * clipAudioGain(clip, s.playhead), track?.muted ?? false)
         }
         const vis = s.clips.find((c) => c.kind !== 'text' && s.playhead >= c.start && s.playhead < c.start + c.duration)
         if (vis) {
@@ -252,7 +254,52 @@ export default function PreviewPlayer(): JSX.Element {
             max={Math.max(total, 0.01)}
             step={0.001}
             defaultValue={Math.min(useEditorStore.getState().playhead, total)}
-            onChange={(e) => onSeek(+e.target.value)}
+            onPointerDown={(e) => {
+              if (e.button !== 0) return
+              scrubbingRef.current = true
+              const el = e.currentTarget as HTMLInputElement
+              el.setPointerCapture(e.pointerId)
+              onSeek(+el.value)
+            }}
+            onPointerMove={(e) => {
+              if (!scrubbingRef.current) return
+              onSeek(+(e.currentTarget as HTMLInputElement).value)
+            }}
+            onPointerUp={(e) => {
+              scrubbingRef.current = false
+              ;(e.currentTarget as HTMLInputElement).releasePointerCapture?.(e.pointerId)
+            }}
+            onPointerCancel={() => {
+              scrubbingRef.current = false
+            }}
+            onChange={(e) => {
+              // alleen tijdens bewust slepen; keyboard handled in onKeyDown
+              if (scrubbingRef.current) onSeek(+e.target.value)
+              else {
+                // toevallige change (wheel/focus) → terug naar echte playhead
+                e.target.value = String(Math.min(useEditorStore.getState().playhead, Math.max(total, 0.01)))
+              }
+            }}
+            onKeyDown={(e) => {
+              const max = Math.max(total, 0.01)
+              const cur = useEditorStore.getState().playhead
+              let next: number | null = null
+              if (e.key === 'ArrowRight' || e.key === 'ArrowUp') next = cur + (e.shiftKey ? 1 : 0.1)
+              else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') next = cur - (e.shiftKey ? 1 : 0.1)
+              else if (e.key === 'PageUp') next = cur + 5
+              else if (e.key === 'PageDown') next = cur - 5
+              else if (e.key === 'Home') next = 0
+              else if (e.key === 'End') next = max
+              if (next !== null) {
+                e.preventDefault()
+                onSeek(next)
+                e.currentTarget.value = String(Math.max(0, Math.min(next, max)))
+              }
+            }}
+            onWheel={(e) => {
+              // trackpad/wiel over de lijn mag playhead niet verschuiven
+              e.preventDefault()
+            }}
           />
           <span className="time">
             <span ref={timeRef}>{formatTime(useEditorStore.getState().playhead, project.fps)}</span> <span className="total">/ {formatTime(total, project.fps)}</span>

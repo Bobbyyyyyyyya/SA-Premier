@@ -467,8 +467,8 @@ function ClipBox({ clip, asset, pps, selected, dimmed, tracks, snapEnabled }: Cl
         <span className="clip-name">{label}</span>
         <span className="clip-dur">{formatTime(clip.duration)}</span>
       </div>
-      {clip.transitionOut && <div className="clip-transition" title="Transition out" />}
-      {clip.transitionIn && <div className="clip-transition in" title="Transition in" />}
+      {clip.transitionOut && <div className="clip-transition" title={`Transition out: ${clip.transitionOut.type}`} />}
+      {clip.transitionIn && <div className="clip-transition in" title={`Transition in: ${clip.transitionIn.type}`} />}
       {!isText && <div className="clip-handle left" onPointerDown={(e) => onTrim(e, 'l')} title="Trim begin" />}
       <div className="clip-handle right" onPointerDown={(e) => onTrim(e, 'r')} title="Trim einde" />
     </div>
@@ -514,6 +514,7 @@ function Ruler({
       className="tl-ruler"
       style={{ width: contentW, height: RULER_H }}
       onPointerDown={(e) => {
+        if (e.button !== 0) return
         pausePlayback()
         scrubbing.current = true
         ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
@@ -527,6 +528,12 @@ function Ruler({
         if (scrubbing.current) seekToClientX(e.currentTarget as HTMLElement, e.clientX)
       }}
       onPointerUp={() => {
+        scrubbing.current = false
+      }}
+      onPointerCancel={() => {
+        scrubbing.current = false
+      }}
+      onLostPointerCapture={() => {
         scrubbing.current = false
       }}
       onPointerLeave={() => {
@@ -556,7 +563,6 @@ function TrackHeader({ track, clipCount }: { track: Track; clipCount: number }):
   const setTrackMuted = useEditorStore((s) => s.setTrackMuted)
   const setTrackHidden = useEditorStore((s) => s.setTrackHidden)
   const setTrackLocked = useEditorStore((s) => (s as unknown as { setTrackLocked: (id: string, v: boolean) => void }).setTrackLocked ?? (() => null)) as (id: string, v: boolean) => void
-  const setTrackSolo = useEditorStore((s) => (s as unknown as { setTrackSolo: (id: string, v: boolean) => void }).setTrackSolo ?? (() => null)) as (id: string, v: boolean) => void
   const removeTrack = useEditorStore((s) => s.removeTrack)
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(track.name)
@@ -570,7 +576,6 @@ function TrackHeader({ track, clipCount }: { track: Track; clipCount: number }):
   }
 
   const locked = !!track.locked
-  const solo = !!track.solo
 
   return (
     <div className={`tl-track-header ${track.muted ? 'muted' : ''} ${locked ? 'locked' : ''}`} style={{ height: ROW_H }} title={`${track.name} · ${clipCount} clip(s) — dubbelklik naam om te hernoemen`}>
@@ -608,9 +613,6 @@ function TrackHeader({ track, clipCount }: { track: Track; clipCount: number }):
         </button>
         <button className={track.muted ? 'active warn' : ''} title={track.muted ? 'Unmute' : 'Mute'} onClick={() => setTrackMuted(track.id, !track.muted)} data-tooltip="Mute / Unmute">
           {track.muted ? <IconMute size={13} /> : <IconVolume size={13} />}
-        </button>
-        <button className={solo ? 'active' : ''} title={solo ? 'Solo uit' : 'Solo'} onClick={() => setTrackSolo(track.id, !solo)} data-tooltip="Solo">
-          S
         </button>
         <button className="ghost danger" title="Verwijder track" onClick={() => {
           if (clipCount > 0 && !window.confirm(`Track "${track.name}" met ${clipCount} clip(s) verwijderen?`)) return
@@ -762,6 +764,85 @@ function TrackRow({
   )
 }
 
+/* ---------------- new track drop zone ---------------- */
+
+function NewTrackZone({
+  pps,
+  contentW,
+  snapEnabled
+}: {
+  pps: number
+  contentW: number
+  snapEnabled: boolean
+}): JSX.Element {
+  const addTrack = useEditorStore((s) => s.addTrack)
+  const [isOver, setIsOver] = useState(false)
+
+  const timeAt = (e: React.DragEvent): number => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    return snapTime(clamp((e.clientX - rect.left) / pps, 0, 99999), undefined, snapEnabled)
+  }
+
+  const onDragOver = (e: React.DragEvent): void => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+    setIsOver(true)
+  }
+
+  const onDrop = (e: React.DragEvent): void => {
+    e.preventDefault()
+    setIsOver(false)
+    pausePlayback()
+    const dropT = timeAt(e)
+    const s = useEditorStore.getState()
+
+    const assetId = (e.dataTransfer.getData('application/x-asset') || e.dataTransfer.getData('text/plain')).trim()
+    if (assetId) {
+      const asset = s.assets.find((a) => a.id === assetId)
+      if (asset) {
+        const want = asset.type === 'audio' ? 'audio' : 'video'
+        const trackId = addTrack(want)
+        s.addClip(asset.id, trackId, dropT)
+        return
+      }
+    }
+
+    const files = Array.from(e.dataTransfer.files ?? [])
+    const paths = files.map((f) => window.api.getPathForFile(f)).filter(Boolean)
+    if (!paths.length) return
+    void importPaths(paths, { place: false }).then(() => {
+      const st = useEditorStore.getState()
+      paths.forEach((p, i) => {
+        const asset = st.assets.find((a) => a.path === p)
+        if (!asset) return
+        const want = asset.type === 'audio' ? 'audio' : 'video'
+        const trackId = addTrack(want)
+        useEditorStore.getState().addClip(asset.id, trackId, dropT + i * 0.1)
+      })
+    })
+  }
+
+  return (
+    <div
+      className={`tl-new-track ${isOver ? 'over' : ''}`}
+      style={{ width: contentW, height: ROW_H }}
+      onDragOver={onDragOver}
+      onDragLeave={() => setIsOver(false)}
+      onDrop={onDrop}
+      onClick={() => {
+        pausePlayback()
+        addTrack('video')
+      }}
+      title="Sleep media hier voor een nieuwe track · klik = video track"
+      data-tooltip="Nieuwe track maken"
+    >
+      <span className="tl-new-track-label">
+        {isOver ? 'Loslaten → nieuwe track + clip' : '＋ Sleep media voor nieuwe track · of klik voor +Video'}
+      </span>
+    </div>
+  )
+}
+
 /* ---------------- main timeline ---------------- */
 
 export default function Timeline(): JSX.Element {
@@ -814,6 +895,80 @@ export default function Timeline(): JSX.Element {
       return { ...c, trackId: fallback.id }
     })
     if (changed) useEditorStore.setState({ clips: fixed })
+  }, [clips, tracks])
+
+  // Fix: subtitle-clips die over meerdere tracks verspreid zijn geraakt → 1 rij
+  // Eén setState aan het eind (nieuwe track meenemen) — voorkomt wipe → infinite loop
+  useEffect(() => {
+    const s = useEditorStore.getState()
+    const subTracks = s.tracks.filter((t) => t.kind === 'video' && /^Subtitles(\s*·\s*[A-Za-z-]+)?$/i.test(t.name))
+    const subTrackIds = new Set(subTracks.map((t) => t.id))
+    const isSubLook = (c: Clip): boolean => {
+      if (c.kind !== 'text' || !c.text) return false
+      if (subTrackIds.has(c.trackId)) return true
+      const t = c.text
+      return t.y >= 0.85 && t.fontFamily === 'Helvetica Neue' && Math.round(t.fontSize) === 48 && t.letterSpacing === 0.5
+    }
+    const subs = s.clips.filter(isSubLook)
+    if (subs.length < 2) return
+    const trackIds = new Set(subs.map((c) => c.trackId))
+    const invalidTrack = [...trackIds].some((id) => !s.tracks.some((t) => t.id === id))
+    const multi = trackIds.size > 1 || invalidTrack
+    const sorted = [...subs].sort((a, b) => a.start - b.start)
+    let needsTrim = false
+    for (let i = 0; i < sorted.length - 1; i++) {
+      if (sorted[i].start + sorted[i].duration > sorted[i + 1].start + 0.001) {
+        needsTrim = true
+        break
+      }
+    }
+    if (!multi && !needsTrim) return
+
+    let created: Track | null = null
+    let mainId: string
+    const named = subTracks.find((t) => t.name === 'Subtitles')
+    if (named) mainId = named.id
+    else if (subTracks.length > 0) mainId = subTracks[0].id
+    else {
+      created = { id: 'subtitles', name: 'Subtitles', kind: 'video', muted: false, hidden: false }
+      mainId = created.id
+    }
+    const baseTracks: Track[] = created ? [...s.tracks, created] : s.tracks
+
+    let clipsMoved = false
+    const nextClips = s.clips.map((c) => {
+      if (isSubLook(c) && c.trackId !== mainId) {
+        clipsMoved = true
+        return { ...c, trackId: mainId }
+      }
+      return c
+    })
+    const mine = nextClips.filter((c) => c.kind === 'text' && c.trackId === mainId).sort((a, b) => a.start - b.start)
+    const durMap = new Map<string, number>()
+    for (let i = 0; i < mine.length - 1; i++) {
+      const c = mine[i]
+      const next = mine[i + 1]
+      if (c.start + c.duration > next.start + 0.001) durMap.set(c.id, Math.max(0.1, next.start - c.start))
+    }
+    let clipsTrimmed = false
+    const finalClips = durMap.size
+      ? nextClips.map((c) => {
+          const d = durMap.get(c.id)
+          if (d === undefined || d === c.duration) return c
+          clipsTrimmed = true
+          return { ...c, duration: d }
+        })
+      : nextClips
+
+    const dropIds = new Set(subTracks.filter((t) => t.id !== mainId).map((t) => t.id))
+    const finalTracks = dropIds.size ? baseTracks.filter((t) => !dropIds.has(t.id)) : baseTracks
+
+    const tracksChanged = created !== null || dropIds.size > 0
+    if (!clipsMoved && !clipsTrimmed && !tracksChanged) return
+    const patch: { clips?: Clip[]; tracks?: Track[] } = {}
+    if (clipsMoved || clipsTrimmed) patch.clips = finalClips
+    if (tracksChanged) patch.tracks = finalTracks
+    if (patch.clips || patch.tracks) useEditorStore.setState(patch)
   }, [clips, tracks])
 
   // Auto-fit bij grote projecten zodat je niet naar leeg 00:00 kijkt terwijl clip op 06:00 staat
@@ -995,6 +1150,9 @@ export default function Timeline(): JSX.Element {
             <TrackHeader key={t.id} track={t} clipCount={clips.filter((c) => c.trackId === t.id).length} />
           ))}
           {tracks.length === 0 && <div className="tl-no-tracks">Geen tracks</div>}
+          <div className="tl-new-track-hdr" style={{ height: ROW_H }} title="Nieuwe track">
+            <span>+ Track</span>
+          </div>
         </div>
         <div className="tl-body" ref={bodyRef}>
           <Ruler pps={pps} contentW={contentW} total={total} />
@@ -1012,12 +1170,13 @@ export default function Timeline(): JSX.Element {
               total={total}
             />
           ))}
+          <NewTrackZone pps={pps} contentW={contentW} snapEnabled={snapEnabled} />
           {clips.length === 0 && (
             <div className="tl-empty" style={{ width: contentW }}>
               <div className="tl-empty-card">
                 <div className="tl-empty-icon"><span style={{ display: 'inline-flex' }}><IconBox size={28} /></span></div>
                 <div className="tl-empty-title">Sleep media hierheen om te starten</div>
-                <div className="tl-empty-sub">…of dubbelklik een item in de bibliotheek · + Tekst voor een titel</div>
+                <div className="tl-empty-sub">…of dubbelklik een item in de bibliotheek · + Tekst voor een titel · sleep onder de tracks voor een nieuwe track</div>
               </div>
             </div>
           )}

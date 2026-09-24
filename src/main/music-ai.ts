@@ -8,6 +8,8 @@ const PORT = 8189
 const BASE = `http://127.0.0.1:${PORT}`
 const comfyDir = path.join(os.homedir(), 'ComfyUI')
 let server: ChildProcess | null = null
+/** Single-flight: voorkomt dubbele start + kill-race (exit null). */
+let starting: Promise<{ available: boolean; started?: boolean; error?: string }> | null = null
 
 function pythonBin(): string {
   const cands = [
@@ -20,6 +22,8 @@ function pythonBin(): string {
 }
 
 function killZombieOnPort(port: number): void {
+  // Niet killen als wij al een eigen server-proces hebben.
+  if (server) return
   try {
     execSync(`lsof -ti :${port} | xargs kill -9 2>/dev/null`, { stdio: 'ignore' })
   } catch {}
@@ -50,6 +54,14 @@ async function waitForMusicReady(timeoutMs = 45000): Promise<boolean> {
 
 /** Start MusicGen-server automatisch en wacht tot hij bereikbaar is. */
 export async function ensureMusicAIAsync(waitMs = 45000): Promise<{ available: boolean; started?: boolean; error?: string }> {
+  if (starting) return starting
+  starting = doEnsureMusicAIAsync(waitMs).finally(() => {
+    starting = null
+  })
+  return starting
+}
+
+async function doEnsureMusicAIAsync(waitMs: number): Promise<{ available: boolean; started?: boolean; error?: string }> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const setup = require('./ai-setup') as typeof import('./ai-setup')
@@ -78,15 +90,19 @@ export async function ensureMusicAIAsync(waitMs = 45000): Promise<{ available: b
       try { server.kill() } catch { /* ignore */ }
       server = null
     }
+    const logPath = path.join(os.tmpdir(), 'sa-premier-music.log')
+    const logFd = fs.openSync(logPath, 'a')
+    fs.writeSync(logFd, `\n--- start ${new Date().toISOString()} ---\n`)
     server = spawn(bin, [entry], {
       cwd: path.dirname(entry),
-      stdio: 'ignore',
+      stdio: ['ignore', logFd, logFd],
       detached: true,
       env: { ...process.env, PYTHONUNBUFFERED: '1', TQDM_DISABLE: '1', MUSIC_PORT: String(PORT) }
     })
+    try { fs.closeSync(logFd) } catch { /* ignore */ }
     server.unref()
-    server.on('exit', (code) => {
-      console.log('[music] server exited with code', code)
+    server.on('exit', (code, signal) => {
+      console.log('[music] server exited with code', code, signal ? `signal=${signal}` : '')
       server = null
     })
     server.on('error', (e) => {
@@ -204,11 +220,31 @@ print("done")
   return done
 }
 
-export function uninstallMusicModel(modelId: string): { ok: boolean; error?: string } {
-  const p = cachePathForModel(modelId)
+export async function uninstallMusicModel(modelId: string): Promise<{ ok: boolean; error?: string }> {
+  // server houdt model vast → stoppen en wachten tot bestanden vrijkomen
+  stopMusicAI()
+  killOrphanServers()
   try {
-    if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true })
-    // also try to clear transformers cache
+    execSync(`lsof -ti :${PORT} | xargs kill -9 2>/dev/null`, { stdio: 'ignore' })
+  } catch { /* geen listener meer */ }
+  await new Promise((r) => setTimeout(r, 500))
+
+  const p = cachePathForModel(modelId)
+  const lockDir = path.join(os.homedir(), '.cache', 'huggingface', 'hub', '.locks', 'models--' + modelId.replace('/', '--'))
+  try {
+    // HF cache kan locks/open bestanden hebben → meerdere pogingen
+    for (let attempt = 0; attempt < 4 && fs.existsSync(p); attempt++) {
+      try {
+        fs.rmSync(p, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 })
+      } catch { /* volgende poging */ }
+      if (fs.existsSync(p)) await new Promise((r) => setTimeout(r, 350))
+    }
+    try {
+      if (fs.existsSync(lockDir)) fs.rmSync(lockDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 })
+    } catch { /* locks mogen falen */ }
+    if (fs.existsSync(p)) return { ok: false, error: 'Map nog aanwezig (file in use?). Sluit de app en probeer opnieuw.' }
     return { ok: true }
-  } catch (e) { return { ok: false, error: (e as Error).message } }
+  } catch (e) {
+    return { ok: false, error: (e as Error).message }
+  }
 }

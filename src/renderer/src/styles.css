@@ -975,18 +975,46 @@ select:focus {
 
 /* ---------- Text clips + text input ---------- */
 
+.text-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.text-preset-grid button {
+  min-height: 34px;
+  padding: 6px 8px;
+  font-size: 11px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  cursor: pointer;
+  text-align: center;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.text-preset-grid button:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+.text-preset-grid button:active {
+  transform: translateY(0) scale(0.98);
+}
+
 .clip.text {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(0, 0, 0, 0.22)), #7349c4;
 }
 .clip .clip-thumb.text-thumb {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  min-width: 0;
   padding: 4px;
   color: #fff;
   font-size: 9px;
   font-weight: 600;
-  text-align: center;
+  text-align: left;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -1225,6 +1253,31 @@ select:focus {
   border: 1px solid var(--border);
 }
 .models-tabs button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #1a120a;
+  font-weight: 700;
+}
+/* multi-select taal-pills (AI Subtitles) */
+.lang-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.lang-pills button {
+  font-size: 11px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.lang-pills button:hover {
+  border-color: var(--accent-soft);
+  color: var(--text);
+}
+.lang-pills button.active {
   background: var(--accent);
   border-color: var(--accent);
   color: #1a120a;
@@ -1571,6 +1624,70 @@ button.small { font-size: 11px; padding: 4px 8px; }
 }
 .tl-no-tracks { padding: 14px; color: var(--text-faint); font-size: 11px; }
 
+.tl-new-track {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-top: 1px dashed rgba(255, 127, 42, 0.35);
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 127, 42, 0.03),
+    rgba(255, 127, 42, 0.03) 8px,
+    transparent 8px,
+    transparent 16px
+  );
+  cursor: copy;
+  transition: background 0.15s, box-shadow 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+.tl-new-track-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--text-faint);
+  pointer-events: none;
+  user-select: none;
+  transition: color 0.15s, transform 0.15s;
+}
+.tl-new-track:hover {
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 127, 42, 0.08),
+    rgba(255, 127, 42, 0.08) 8px,
+    transparent 8px,
+    transparent 16px
+  );
+  border-color: var(--accent);
+}
+.tl-new-track:hover .tl-new-track-label {
+  color: var(--accent-soft);
+}
+.tl-new-track.over {
+  background: rgba(255, 127, 42, 0.14);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+  border-color: var(--accent);
+}
+.tl-new-track.over .tl-new-track-label {
+  color: var(--accent-soft);
+  transform: scale(1.04);
+}
+.tl-new-track-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #141210;
+  border-top: 1px dashed rgba(255, 127, 42, 0.35);
+  color: var(--text-faint);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
 .tl-body {
   background:
     linear-gradient(180deg, rgba(255,255,255,0.02), transparent 120px),
@@ -1707,7 +1824,7 @@ button.small { font-size: 11px; padding: 4px 8px; }
   font-size: 9px; font-family: ui-monospace, monospace; color: rgba(255,255,255,0.9);
   background: rgba(0,0,0,0.45); padding: 1px 5px; border-radius: 4px; flex: none;
 }
-.clip .clip-thumb.text-thumb { background: transparent; font-size: 11px; }
+.clip .clip-thumb.text-thumb { background: transparent; font-size: 11px; justify-content: flex-start; text-align: left; }
 .clip .clip-handle { width: 12px; border-radius: 6px; }
 .clip .clip-handle:hover { background: rgba(255,255,255,0.4); }
 .clip.selected .clip-handle { background: rgba(255,255,255,0.12); }

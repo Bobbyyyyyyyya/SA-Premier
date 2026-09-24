@@ -1,8 +1,30 @@
 import { useCallback, useEffect, useState } from 'react'
 import { IconBox, IconCloud, IconTool, IconMusic, IconPalette } from './icons'
 import { importPaths } from '../lib/inspect'
-import type { AiImageProgress, AiMusicProgress, CatalogModel, ComfyStatus, ComfyImageResult, InstallProgress, InstalledModel } from '../../../shared/types'
+import type { AiImageProgress, AiMusicProgress, CatalogModel, ComfyStatus, ComfyImageResult, InstallProgress, InstalledModel, TranscribeProgress, TranscribeResult, TranscribeStatus } from '../../../shared/types'
 import type { MusicStatus } from '../../../shared/types'
+import { useEditorStore } from '../store'
+
+const SUB_LANGS: Array<{ id: string; label: string }> = [
+  { id: 'auto', label: 'Auto-detect' },
+  { id: 'en', label: 'English' },
+  { id: 'nl', label: 'Nederlands' },
+  { id: 'de', label: 'Deutsch' },
+  { id: 'fr', label: 'Français' },
+  { id: 'es', label: 'Español' },
+  { id: 'it', label: 'Italiano' },
+  { id: 'pt', label: 'Português' },
+  { id: 'pl', label: 'Polski' },
+  { id: 'tr', label: 'Türkçe' },
+  { id: 'ru', label: 'Русский' },
+  { id: 'sv', label: 'Svenska' },
+  { id: 'da', label: 'Dansk' },
+  { id: 'ja', label: '日本語' },
+  { id: 'ko', label: '한국어' },
+  { id: 'zh', label: '中文' },
+  { id: 'ar', label: 'العربية' },
+  { id: 'hi', label: 'हिन्दी' }
+]
 
 function formatMb(mb: number): string {
   if (mb >= 1024) return (mb / 1024).toFixed(1) + ' GB'
@@ -41,6 +63,18 @@ export default function AiPanel(): JSX.Element {
   const [musicProgress, setMusicProgress] = useState<AiMusicProgress | null>(null)
   const [setupMode, setSetupMode] = useState('ondemand')
 
+  // --- AI Subtitles (whisper + multi-lang) ---
+  const [whisper, setWhisper] = useState<TranscribeStatus | null>(null)
+  const [whisperCatalog, setWhisperCatalog] = useState<CatalogModel[]>([])
+  const [whisperInstalls, setWhisperInstalls] = useState<Record<string, InstallProgress>>({})
+  const [subSource, setSubSource] = useState('auto')
+  const [subTargets, setSubTargets] = useState<string[]>(['nl'])
+  const [subModel, setSubModel] = useState('small')
+  const [subBusy, setSubBusy] = useState(false)
+  const [subProgress, setSubProgress] = useState<TranscribeProgress | null>(null)
+  const [subResult, setSubResult] = useState<TranscribeResult | null>(null)
+  const [subError, setSubError] = useState('')
+
   const refreshComfy = useCallback(async (): Promise<void> => {
     try {
       const [st, mst, ost] = await Promise.all([
@@ -68,6 +102,21 @@ export default function AiPanel(): JSX.Element {
       setMusicCatalog(mc)
       setSelectedMusic((cur) => (cur && mList.some((m) => m.name === cur) ? cur : mList[0]?.name ?? ''))
     } catch { /* ignore */ }
+  }, [])
+
+  const refreshWhisper = useCallback(async (): Promise<void> => {
+    try {
+      const api = window.api as unknown as {
+        whisperStatus?: () => Promise<TranscribeStatus>
+        whisperCatalog?: () => Promise<CatalogModel[]>
+      }
+      const st = (await api.whisperStatus?.()) ?? null
+      setWhisper(st)
+      const cat = (await api.whisperCatalog?.()) ?? []
+      setWhisperCatalog(cat)
+    } catch {
+      /* oude preload */
+    }
   }, [])
 
   const autoStartAll = useCallback(async (): Promise<void> => {
@@ -129,11 +178,13 @@ export default function AiPanel(): JSX.Element {
   useEffect(() => {
     void refreshComfy()
     void autoStartAll()
+    void refreshWhisper()
     ;(window.api as unknown as { aiSetupGet?: () => Promise<{ mode: string }> }).aiSetupGet?.().then((s) => setSetupMode(s.mode)).catch(() => null)
     const onSetupChanged = (): void => {
       ;(window.api as unknown as { aiSetupGet?: () => Promise<{ mode: string }> }).aiSetupGet?.().then((s) => setSetupMode(s.mode)).catch(() => null)
       void refreshComfy()
       void autoStartAll()
+      void refreshWhisper()
     }
     window.addEventListener('ai-setup-changed', onSetupChanged)
     // snel pollen tot alles online is, daarna rustig
@@ -150,7 +201,53 @@ export default function AiPanel(): JSX.Element {
       clearInterval(t)
       window.removeEventListener('ai-setup-changed', onSetupChanged)
     }
-  }, [refreshComfy, autoStartAll])
+  }, [refreshComfy, autoStartAll, refreshWhisper])
+
+  useEffect(() => {
+    const api = window.api as unknown as {
+      onSubtitlesProgress?: (cb: (p: TranscribeProgress) => void) => () => void
+      onWhisperInstallProgress?: (cb: (p: InstallProgress) => void) => () => void
+    }
+    const offs: Array<() => void> = []
+    if (api.onWhisperInstallProgress) {
+      offs.push(
+        api.onWhisperInstallProgress((p) => {
+          setWhisperInstalls((prev) => ({ ...prev, [p.id]: p }))
+          if (p.id === 'whisper-cli') {
+            // live voortgang tonen in de sub-sectie
+            if (p.phase === 'downloading') {
+              setSubBusy(true)
+              setSubProgress({
+                phase: 'downloading-model',
+                percent: p.percent ?? 5,
+                message: p.message || 'whisper-cli installeren…'
+              })
+            } else if (p.phase === 'complete') {
+              setSubBusy(false)
+              setSubProgress(null)
+              setSubError('')
+            } else if (p.phase === 'error') {
+              setSubBusy(false)
+              setSubProgress(null)
+              setSubError(p.message || 'whisper-cli installeren mislukt')
+            }
+          }
+          if (p.phase === 'complete' || p.phase === 'error') void refreshWhisper()
+        })
+      )
+    }
+    if (api.onSubtitlesProgress) {
+      offs.push(
+        api.onSubtitlesProgress((p) => {
+          setSubProgress(p)
+          if (p.phase === 'done' || p.phase === 'error' || p.phase === 'cancelled') {
+            if (p.phase !== 'done') setSubBusy(false)
+          }
+        })
+      )
+    }
+    return () => offs.forEach((f) => f())
+  }, [refreshWhisper])
 
   useEffect(() => {
     const off = window.api.onComfyInstallProgress((p) => {
@@ -241,6 +338,148 @@ export default function AiPanel(): JSX.Element {
   const downloadResultAudio = async (): Promise<void> => {
     if (!beatResult?.base64 || !beatResult.name) return
     await window.api.aiSaveAudio(beatResult.base64, beatResult.name)
+  }
+
+  const toggleSubTarget = (id: string): void => {
+    setSubTargets((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  }
+
+  const installWhisperModel = async (id: string): Promise<void> => {
+    const api = window.api as unknown as { whisperInstall?: (id: string) => Promise<InstallProgress> }
+    if (!api.whisperInstall) return
+    setWhisperInstalls((p) => ({ ...p, [id]: { id, phase: 'downloading', percent: 0 } }))
+    await api.whisperInstall(id)
+    void refreshWhisper()
+  }
+
+  const installWhisperCli = async (): Promise<void> => {
+    const api = window.api as unknown as { whisperInstallCli?: () => Promise<InstallProgress> }
+    if (!api.whisperInstallCli) {
+      setSubError('Deze build heeft geen whisper-cli installer (update de app).')
+      return
+    }
+    if (subBusy) return
+    setSubBusy(true)
+    setSubError('')
+    setSubResult(null)
+    setSubProgress({ phase: 'downloading-model', percent: 2, message: 'whisper-cli installeren…' })
+    try {
+      const r = await api.whisperInstallCli()
+      setWhisperInstalls((p) => ({ ...p, 'whisper-cli': r }))
+      if (r.phase === 'complete') {
+        setSubError('')
+        setSubProgress(null)
+      } else {
+        setSubError(r.message || 'Installeren mislukt')
+        setSubProgress(null)
+      }
+      await refreshWhisper()
+    } catch (e) {
+      setSubError((e as Error).message)
+      setSubProgress(null)
+    } finally {
+      setSubBusy(false)
+    }
+  }
+
+  const runSubtitles = async (): Promise<void> => {
+    const api = window.api as unknown as {
+      whisperInstallCli?: () => Promise<InstallProgress>
+      subtitlesGenerate?: (req: {
+        path: string
+        start?: number
+        duration?: number
+        sourceLanguage: string
+        targetLanguages: string[]
+        modelId?: string
+      }) => Promise<TranscribeResult>
+    }
+    if (!api.subtitlesGenerate) {
+      setSubError('Deze build heeft geen subtitle-engine (update de app).')
+      return
+    }
+    if (!whisper?.available && api.whisperInstallCli) {
+      // auto-install engine bij eerste generate
+      setSubBusy(true)
+      setSubError('')
+      setSubProgress({ phase: 'downloading-model', percent: 2, message: 'whisper-cli installeren…' })
+      try {
+        const inst = await api.whisperInstallCli()
+        await refreshWhisper()
+        if (inst.phase !== 'complete') {
+          setSubBusy(false)
+          setSubProgress(null)
+          setSubError(inst.message || 'whisper-cli installeren mislukt')
+          return
+        }
+        setSubProgress({ phase: 'extracting', percent: 2, message: 'Engine klaar — verder…' })
+      } catch (e) {
+        setSubBusy(false)
+        setSubProgress(null)
+        setSubError((e as Error).message)
+        return
+      }
+    }
+    const st = useEditorStore.getState()
+    // kies audio/video clip met langste duur rond playhead, of langste overall
+    const media = st.clips
+      .filter((c) => c.kind === 'video' || c.kind === 'audio')
+      .sort((a, b) => b.duration - a.duration)
+    const pick =
+      media.find((c) => st.playhead >= c.start && st.playhead < c.start + c.duration) ?? media[0]
+    if (!pick) {
+      setSubError('Geen audio/video-clip in de timeline om te transcriberen.')
+      return
+    }
+    const asset = st.assets.find((a) => a.id === pick.assetId)
+    if (!asset) {
+      setSubError('Clip-asset niet gevonden.')
+      return
+    }
+    if (!subTargets.length) {
+      setSubError('Kies minstens één doeltaal.')
+      return
+    }
+
+    setSubBusy(true)
+    setSubError('')
+    setSubResult(null)
+    setSubProgress({ phase: 'extracting', percent: 0, message: 'Starten…' })
+    try {
+      const r = await api.subtitlesGenerate({
+        path: asset.path,
+        start: pick.sourceStart,
+        duration: pick.duration,
+        sourceLanguage: subSource,
+        targetLanguages: subTargets,
+        modelId: subModel
+      })
+      setSubResult(r)
+      if (r.ok && r.tracks.length) {
+        const timeOffset = pick.start - pick.sourceStart
+        r.tracks.forEach((t, i) => {
+          st.addSubtitleClips(t.language, t.segments, {
+            timeOffset,
+            // eerste taal wipt de track, rest wordt toegevoegd (1 track)
+            replace: i === 0
+          })
+        })
+      }
+      if (!r.ok && r.error) setSubError(r.error)
+      if (r.warnings?.length) setSubError(r.warnings.join(' '))
+    } catch (e) {
+      setSubError((e as Error).message)
+    } finally {
+      setSubBusy(false)
+      setSubProgress((p) => (p?.phase === 'done' ? p : null))
+      void refreshWhisper()
+    }
+  }
+
+  const cancelSubtitles = async (): Promise<void> => {
+    const api = window.api as unknown as { subtitlesCancel?: () => Promise<void> }
+    await api.subtitlesCancel?.()
+    setSubBusy(false)
   }
 
   const filteredImage = catalog.filter((c) => !modelSearch || c.name.toLowerCase().includes(modelSearch.toLowerCase()) || c.description.toLowerCase().includes(modelSearch.toLowerCase()))
@@ -390,13 +629,18 @@ export default function AiPanel(): JSX.Element {
                   <div key={m.name} className="model-row">
                     <div className="model-info">
                       <div className="model-name">{m.name.replace('.json','')}</div>
-                      <div className="model-size">{formatMb(Math.round(m.size / 1024))} • installed</div>
+                      <div className="model-size">{formatMb(Math.round(m.size / 1024 / 1024))} • installed</div>
                     </div>
                     <button
                       className="model-uninstall"
                       onClick={async () => {
+                        if (!confirm(`Music-model ${m.name} verwijderen?`)) return
                         const r = await window.api.musicUninstall(m.name)
-                        if (!r.ok) alert(r.error ?? 'Verwijderen mislukt')
+                        if (!r.ok) {
+                          alert(r.error ?? 'Verwijderen mislukt')
+                        } else {
+                          setMusicInstalled((cur) => cur.filter((x) => x.name !== m.name))
+                        }
                         void refreshComfy()
                       }}
                      title="Remove" data-tooltip="Remove">
@@ -618,6 +862,177 @@ export default function AiPanel(): JSX.Element {
         )}
         {!beatResult?.ok && beatResult?.error && <div className="ai-error">{beatResult.error}</div>}
         {musicInstalled.length === 0 && <div className="ai-hint">Tip: installeer een Music-model hierboven voor meer stijlen.</div>}
+      </div>
+
+      {/* AI Subtitles */}
+      <div className="inspector-section">
+        <h4>AI Subtitles</h4>
+        <div className="ai-hint" style={{ marginBottom: 8 }}>
+          Whisper transcribeert de langste clip (of de clip onder de playhead) en maakt tekst-tracks — meerdere talen tegelijk.
+          Vertaling naar andere talen gebruikt lokaal Ollama.
+        </div>
+
+        <div className="ctl">
+          <label>Audio lang</label>
+          <select value={subSource} onChange={(e) => setSubSource(e.target.value)} style={{ flex: 1 }}>
+            {SUB_LANGS.map((l) => (
+              <option key={l.id} value={l.id}>{l.label}</option>
+            ))}
+          </select>
+        </div>
+        <div className="ai-hint" style={{ marginTop: -4, marginBottom: 6 }}>
+          Auto-detect is meestal het best. Kies een taal als detectie fout gaat.
+        </div>
+
+        <div className="ctl" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4 }}>
+          <label style={{ width: 'auto' }}>Ondertitels in</label>
+          <div className="lang-pills">
+            {SUB_LANGS.filter((l) => l.id !== 'auto').map((l) => (
+              <button
+                key={l.id}
+                type="button"
+                className={subTargets.includes(l.id) ? 'active' : ''}
+                onClick={() => toggleSubTarget(l.id)}
+                title={l.label}
+                aria-pressed={subTargets.includes(l.id)}
+              >
+                {l.id.toUpperCase()}
+              </button>
+            ))}
+          </div>
+          {subTargets.length === 0 && (
+            <div className="ai-hint" style={{ color: 'var(--danger)' }}>Kies minstens één taal</div>
+          )}
+        </div>
+
+        <div className="ctl">
+          <label>Model</label>
+          <select value={subModel} onChange={(e) => setSubModel(e.target.value)} style={{ flex: 1 }}>
+            {(whisperCatalog.length ? whisperCatalog : [
+              { id: 'tiny', name: 'tiny — snel, minder accuraat', description: '', url: '', sizeMb: 75, file: '', requires: '' },
+              { id: 'base', name: 'base — middel', description: '', url: '', sizeMb: 142, file: '', requires: '' },
+              { id: 'small', name: 'small — aanbevolen', description: '', url: '', sizeMb: 466, file: '', requires: '' },
+              { id: 'medium', name: 'medium — beste accuraatheid', description: '', url: '', sizeMb: 1480, file: '', requires: '' }
+            ]).map((m) => {
+              const installed = (whisper?.models ?? []).some((x) => x.id === m.id && x.size > 1_000_000)
+              return (
+                <option key={m.id} value={m.id}>
+                  {installed ? '✓ ' : ''}{m.name}
+                </option>
+              )
+            })}
+          </select>
+        </div>
+        {(() => {
+          if (subModel === 'tiny' || subModel === 'base') {
+            return (
+              <div className="ai-hint" style={{ color: '#e0a030' }}>
+                {subModel} is sneller maar minder accuraat. Voor betere ondertitels: download <b>small</b> (aanbevolen).
+              </div>
+            )
+          }
+          const installed = (whisper?.models ?? []).some((x) => x.id === subModel && x.size > 1_000_000)
+          if (installed) return null
+          return (
+            <div className="ai-hint">
+              Model nog niet gedownload — Generate haalt het automatisch op (eenmalig).
+            </div>
+          )
+        })()}
+
+        <div className="ai-hint">
+          {whisper?.available
+            ? `whisper: ${whisper.binaryPath ?? 'ok'}${whisper.ollamaAvailable ? ' · Ollama: online (vertaling)' : ' · Ollama offline (alleen bron-taal)'}`
+            : whisper?.error ?? 'whisper-cli zoeken…'}
+        </div>
+
+        <div className="btn-row" style={{ marginTop: 6 }}>
+          {!whisper?.available && (
+            <button
+              type="button"
+              onClick={() => void installWhisperCli()}
+              disabled={subBusy}
+              title="Installeer whisper-cli (brew op macOS, download op Windows/Linux)"
+              data-tooltip="Installeer whisper-engine"
+            >
+              {whisperInstalls['whisper-cli']?.phase === 'downloading'
+                ? `Installeren ${whisperInstalls['whisper-cli']?.percent ?? 0}%`
+                : '⬇ Install whisper-cli'}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => void installWhisperModel(subModel)}
+            disabled={whisperInstalls[subModel]?.phase === 'downloading'}
+            title="Download whisper-model eenmalig"
+            data-tooltip="Download model"
+          >
+            {whisperInstalls[subModel]?.phase === 'downloading'
+              ? `Download ${whisperInstalls[subModel]?.percent ?? 0}%`
+              : 'Download model'}
+          </button>
+          <button
+            className="primary"
+            onClick={() => void runSubtitles()}
+            disabled={subBusy || !subTargets.length}
+            title="Genereer ondertitels"
+            data-tooltip="Genereer ondertitels"
+          >
+            {subBusy ? 'Bezig…' : 'Generate subtitles'}
+          </button>
+          {subBusy && (
+            <button onClick={() => void cancelSubtitles()} title="Annuleren" data-tooltip="Annuleren">
+              Cancel
+            </button>
+          )}
+          <button
+            type="button"
+            className="danger-ghost"
+            onClick={() => {
+              const s = useEditorStore.getState()
+              const n = s.clearSubtitles()
+              setSubResult(null)
+              setSubError(n ? '' : 'Geen ondertitels om te verwijderen.')
+            }}
+            disabled={subBusy}
+            title="Verwijder alle bestaande ondertitel-clips van de timeline"
+            data-tooltip="Alle ondertitels verwijderen"
+          >
+            🗑 Remove all
+          </button>
+        </div>
+
+        {subBusy && subProgress && (
+          <div className="ai-progress-container">
+            <div className="ai-progress-status">
+              {subProgress.message ?? subProgress.phase}
+              {subProgress.error ? ` · ${subProgress.error}` : ''}
+            </div>
+            <div className="progress-track">
+              <div
+                className="progress-fill"
+                style={{
+                  width: `${subProgress.percent ?? 5}%`,
+                  background: 'linear-gradient(90deg, #5b8cff, #7aa2ff)'
+                }}
+              />
+            </div>
+            <div className="ai-progress-percent">{subProgress.percent ?? 0}%</div>
+          </div>
+        )}
+
+        {subError && <div className="ai-error">{subError}</div>}
+
+        {subResult?.ok && (
+          <div className="ai-hint">
+            Klaar: {subResult.tracks.length} track(s) · gedetecteerd: {subResult.detectedLanguage ?? '?'}
+            {subResult.tracks.map((t) => (
+              <div key={t.language}>
+                · {t.languageLabel}: {t.segments.length} segmenten {t.translated ? '(vertaald)' : ''}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

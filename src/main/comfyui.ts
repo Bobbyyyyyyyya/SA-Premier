@@ -18,6 +18,8 @@ const comfyDir = path.join(os.homedir(), 'ComfyUI')
 
 let server: ChildProcess | null = null
 let installs = new Map<string, InstallProgress>()
+/** Single-flight: voorkomt dat app-start + AI-panel samen Comfy starten/killen. */
+let starting: Promise<{ available: boolean; started?: boolean; error?: string }> | null = null
 
 function pythonBin(): string {
   const candidates = [
@@ -29,6 +31,9 @@ function pythonBin(): string {
 }
 
 function killZombieOnPort(port: number): void {
+  // Alleen killen als wij géén eigen server-proces hebben (echte zombie op de poort).
+  // Nooit de net-gestarte child killen → dat gaf "exited with code null" (SIGKILL).
+  if (server) return
   try {
     execSync(`lsof -ti :${port} | xargs kill -9 2>/dev/null`, { stdio: 'ignore' })
   } catch {}
@@ -97,6 +102,14 @@ async function waitForComfyReady(timeoutMs = 60000): Promise<boolean> {
 
 /** Start ComfyUI automatisch en wacht tot hij bereikbaar is. */
 export async function ensureComfyUIAsync(waitMs = 60000): Promise<{ available: boolean; started?: boolean; error?: string }> {
+  if (starting) return starting
+  starting = doEnsureComfyUIAsync(waitMs).finally(() => {
+    starting = null
+  })
+  return starting
+}
+
+async function doEnsureComfyUIAsync(waitMs: number): Promise<{ available: boolean; started?: boolean; error?: string }> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const setup = require('./ai-setup') as typeof import('./ai-setup')
@@ -109,11 +122,7 @@ export async function ensureComfyUIAsync(waitMs = 60000): Promise<{ available: b
   const st = await comfyStatus()
   if (st.available) return { available: true, started: false }
 
-  if (process.platform === 'win32') {
-    killZombieOnPort(PORT)
-  } else {
-    killZombieOnPort(PORT)
-  }
+  killZombieOnPort(PORT)
   await new Promise((r) => setTimeout(r, 500))
 
   if (!fs.existsSync(comfyDir)) {
@@ -129,15 +138,19 @@ export async function ensureComfyUIAsync(waitMs = 60000): Promise<{ available: b
       try { server.kill() } catch { /* ignore */ }
       server = null
     }
+    const logPath = path.join(os.tmpdir(), 'sa-premier-comfy.log')
+    const logFd = fs.openSync(logPath, 'a')
+    fs.writeSync(logFd, `\n--- start ${new Date().toISOString()} ---\n`)
     server = spawn(bin, ['main.py', '--port', String(PORT), '--preview-method', 'none'], {
       cwd: comfyDir,
-      stdio: 'ignore',
+      stdio: ['ignore', logFd, logFd],
       detached: true,
       env: { ...process.env, TQDM_DISABLE: '1', PYTHONUNBUFFERED: '1' }
     })
+    try { fs.closeSync(logFd) } catch { /* ignore */ }
     server.unref()
-    server.on('exit', (code) => {
-      console.log('[comfy] server exited with code', code)
+    server.on('exit', (code, signal) => {
+      console.log('[comfy] server exited with code', code, signal ? `signal=${signal}` : '')
       server = null
     })
     server.on('error', (e) => {
@@ -148,7 +161,18 @@ export async function ensureComfyUIAsync(waitMs = 60000): Promise<{ available: b
     return { available: false, error: (e as Error).message }
   }
   const ok = await waitForComfyReady(waitMs)
-  return ok ? { available: true, started: true } : { available: false, error: 'ComfyUI start, maar reageert niet (timeout 60s). Check ~/ComfyUI log.' }
+  if (!ok) {
+    let tail = ''
+    try {
+      const logPath = path.join(os.tmpdir(), 'sa-premier-comfy.log')
+      tail = fs.readFileSync(logPath, 'utf8').slice(-600)
+    } catch { /* ignore */ }
+    return {
+      available: false,
+      error: `ComfyUI start, maar reageert niet (timeout ${Math.round(waitMs / 1000)}s). Log: ${tail || 'geen log'}`
+    }
+  }
+  return { available: true, started: true }
 }
 
 export function ensureComfyUI(): void {

@@ -1,7 +1,78 @@
 export type TrackKind = 'video' | 'audio'
 export type ClipKind = 'video' | 'audio' | 'text'
 export type AssetType = 'video' | 'audio'
-export type TransitionType = 'crossfade' | 'fade'
+export type TransitionType =
+  | 'crossfade'
+  | 'fade'
+  | 'fadeIn'
+  | 'fadeOut'
+  | 'dissolve'
+  | 'wipeLeft'
+  | 'wipeRight'
+  | 'slideLeft'
+  | 'slideRight'
+  | 'slideUp'
+  | 'slideDown'
+  | 'zoom'
+  | 'dip'
+  | 'audioCrossfade'
+
+/** Types die een next-clip overlappen (in plaats van alleen fade-out). */
+export const OVERLAP_TRANSITIONS: ReadonlySet<TransitionType> = new Set<TransitionType>([
+  'crossfade',
+  'dissolve',
+  'wipeLeft',
+  'wipeRight',
+  'slideLeft',
+  'slideRight',
+  'slideUp',
+  'slideDown',
+  'zoom',
+  'dip',
+  'audioCrossfade'
+])
+
+export const VIDEO_TRANSITIONS: Array<{ id: TransitionType; label: string }> = [
+  { id: 'crossfade', label: 'Crossfade' },
+  { id: 'dissolve', label: 'Dissolve' },
+  { id: 'wipeLeft', label: 'Wipe left' },
+  { id: 'wipeRight', label: 'Wipe right' },
+  { id: 'slideLeft', label: 'Slide left' },
+  { id: 'slideRight', label: 'Slide right' },
+  { id: 'slideUp', label: 'Slide up' },
+  { id: 'slideDown', label: 'Slide down' },
+  { id: 'zoom', label: 'Zoom' },
+  { id: 'dip', label: 'Dip to black' },
+  { id: 'fade', label: 'Fade out' },
+  { id: 'fadeIn', label: 'Fade in' },
+  { id: 'fadeOut', label: 'Fade out only' }
+]
+
+export const AUDIO_TRANSITIONS: Array<{ id: TransitionType; label: string }> = [
+  { id: 'audioCrossfade', label: 'Crossfade' },
+  { id: 'fadeIn', label: 'Fade in' },
+  { id: 'fadeOut', label: 'Fade out' },
+  { id: 'fade', label: 'Fade out' },
+  { id: 'crossfade', label: 'Crossfade (visual)' }
+]
+
+export type TextAnim =
+  | 'none'
+  | 'fade'
+  | 'slideUp'
+  | 'slideDown'
+  | 'slideLeft'
+  | 'slideRight'
+  | 'pop'
+  | 'zoomIn'
+  | 'typewriter'
+  | 'blurIn'
+  | 'bounce'
+  | 'spinIn'
+  | 'flip'
+  | 'drop'
+  | 'swing'
+  | 'grow'
 
 export interface TextData {
   text: string
@@ -11,7 +82,329 @@ export interface TextData {
   fontFamily: string
   x: number
   y: number
+  fontWeight?: number
+  italic?: boolean
+  underline?: boolean
+  letterSpacing?: number
+  lineHeight?: number
+  strokeColor?: string
+  strokeWidth?: number
+  shadowColor?: string
+  shadowBlur?: number
+  shadowX?: number
+  shadowY?: number
+  align?: 'left' | 'center' | 'right'
+  opacity?: number
+  animIn?: TextAnim
+  animOut?: TextAnim
+  animDuration?: number
 }
+
+export const FONT_LIST = [
+  'Arial',
+  'Arial Black',
+  'Arial Narrow',
+  'Helvetica',
+  'Helvetica Neue',
+  'Georgia',
+  'Times New Roman',
+  'Times',
+  'Courier New',
+  'Courier',
+  'Monaco',
+  'Menlo',
+  'Impact',
+  'Tahoma',
+  'Verdana',
+  'Trebuchet MS',
+  'Comic Sans MS',
+  'Palatino',
+  'Baskerville',
+  'Didot',
+  'Futura',
+  'Avenir',
+  'Avenir Next',
+  'Gill Sans',
+  'Gill Sans MT',
+  'Optima',
+  'Cochin',
+  'American Typewriter',
+  'Rockwell',
+  'Marker Felt',
+  'Chalkboard',
+  'Bradley Hand',
+  'Papyrus',
+  'Luminari',
+  'Geneva',
+  'Lucida Grande'
+]
+
+export const ANIM_LIST: Array<{ id: TextAnim; label: string }> = [
+  { id: 'none', label: 'None' },
+  { id: 'fade', label: 'Fade' },
+  { id: 'slideUp', label: 'Slide up' },
+  { id: 'slideDown', label: 'Slide down' },
+  { id: 'slideLeft', label: 'Slide left' },
+  { id: 'slideRight', label: 'Slide right' },
+  { id: 'pop', label: 'Pop' },
+  { id: 'zoomIn', label: 'Zoom in' },
+  { id: 'typewriter', label: 'Typewriter' },
+  { id: 'blurIn', label: 'Blur in' },
+  { id: 'bounce', label: 'Bounce' },
+  { id: 'spinIn', label: 'Spin in' },
+  { id: 'flip', label: 'Flip' },
+  { id: 'drop', label: 'Drop' },
+  { id: 'swing', label: 'Swing' },
+  { id: 'grow', label: 'Grow' }
+]
+
+export interface TextPreset {
+  id: string
+  name: string
+  fx: Partial<TextData>
+}
+
+export const TEXT_PRESETS: TextPreset[] = [
+  {
+    id: 'clean-title',
+    name: 'Clean title',
+    fx: {
+      fontSize: 96,
+      color: '#ffffff',
+      bgColor: 'transparent',
+      fontFamily: 'Helvetica Neue',
+      fontWeight: 700,
+      letterSpacing: 2,
+      strokeColor: '#000000',
+      strokeWidth: 3,
+      shadowColor: 'rgba(0,0,0,0.55)',
+      shadowBlur: 18,
+      shadowX: 0,
+      shadowY: 6,
+      x: 0.5,
+      y: 0.45,
+      animIn: 'fade',
+      animOut: 'fade',
+      animDuration: 0.45
+    }
+  },
+  {
+    id: 'bold-cinematic',
+    name: 'Bold cinematic',
+    fx: {
+      fontSize: 120,
+      color: '#f5f0e8',
+      bgColor: 'transparent',
+      fontFamily: 'Arial Black',
+      fontWeight: 900,
+      letterSpacing: 4,
+      lineHeight: 1.05,
+      strokeColor: '#111111',
+      strokeWidth: 5,
+      shadowColor: 'rgba(0,0,0,0.7)',
+      shadowBlur: 24,
+      shadowY: 8,
+      x: 0.5,
+      y: 0.48,
+      animIn: 'zoomIn',
+      animOut: 'fade',
+      animDuration: 0.55
+    }
+  },
+  {
+    id: 'lower-third',
+    name: 'Lower third',
+    fx: {
+      fontSize: 54,
+      color: '#ffffff',
+      bgColor: 'rgba(18,18,22,0.78)',
+      fontFamily: 'Helvetica Neue',
+      fontWeight: 600,
+      letterSpacing: 1,
+      x: 0.28,
+      y: 0.82,
+      align: 'left',
+      animIn: 'slideRight',
+      animOut: 'fade',
+      animDuration: 0.4
+    }
+  },
+  {
+    id: 'subtitle',
+    name: 'Subtitle',
+    fx: {
+      fontSize: 48,
+      color: '#ffffff',
+      bgColor: 'rgba(0,0,0,0.55)',
+      fontFamily: 'Helvetica Neue',
+      fontWeight: 500,
+      letterSpacing: 0.5,
+      x: 0.5,
+      y: 0.88,
+      animIn: 'fade',
+      animOut: 'fade',
+      animDuration: 0.2
+    }
+  },
+  {
+    id: 'neon',
+    name: 'Neon glow',
+    fx: {
+      fontSize: 100,
+      color: '#7df9ff',
+      bgColor: 'transparent',
+      fontFamily: 'Impact',
+      fontWeight: 700,
+      letterSpacing: 6,
+      strokeColor: '#ff2d95',
+      strokeWidth: 2,
+      shadowColor: '#ff2d95',
+      shadowBlur: 28,
+      shadowX: 0,
+      shadowY: 0,
+      x: 0.5,
+      y: 0.5,
+      animIn: 'pop',
+      animOut: 'fade',
+      animDuration: 0.4
+    }
+  },
+  {
+    id: 'outline-punch',
+    name: 'Outline punch',
+    fx: {
+      fontSize: 110,
+      color: 'transparent',
+      bgColor: 'transparent',
+      fontFamily: 'Arial Black',
+      fontWeight: 900,
+      letterSpacing: 3,
+      strokeColor: '#ffffff',
+      strokeWidth: 4,
+      shadowColor: 'rgba(0,0,0,0.5)',
+      shadowBlur: 10,
+      x: 0.5,
+      y: 0.5,
+      animIn: 'bounce',
+      animOut: 'fade',
+      animDuration: 0.5
+    }
+  },
+  {
+    id: 'typewriter-news',
+    name: 'Typewriter',
+    fx: {
+      fontSize: 56,
+      color: '#e8ff8a',
+      bgColor: 'rgba(12,14,10,0.72)',
+      fontFamily: 'Courier New',
+      fontWeight: 600,
+      letterSpacing: 2,
+      x: 0.5,
+      y: 0.55,
+      animIn: 'typewriter',
+      animOut: 'fade',
+      animDuration: 1.2
+    }
+  },
+  {
+    id: 'soft-fade',
+    name: 'Soft fade',
+    fx: {
+      fontSize: 72,
+      color: '#fff8ee',
+      bgColor: 'transparent',
+      fontFamily: 'Georgia',
+      fontWeight: 500,
+      italic: true,
+      letterSpacing: 1,
+      shadowColor: 'rgba(0,0,0,0.45)',
+      shadowBlur: 14,
+      shadowY: 4,
+      x: 0.5,
+      y: 0.42,
+      animIn: 'blurIn',
+      animOut: 'fade',
+      animDuration: 0.7
+    }
+  },
+  {
+    id: 'badge',
+    name: 'Badge chip',
+    fx: {
+      fontSize: 44,
+      color: '#111111',
+      bgColor: '#ffd84d',
+      fontFamily: 'Trebuchet MS',
+      fontWeight: 700,
+      letterSpacing: 3,
+      x: 0.5,
+      y: 0.16,
+      animIn: 'pop',
+      animOut: 'fade',
+      animDuration: 0.35
+    }
+  },
+  {
+    id: 'slide-in-title',
+    name: 'Slide-in title',
+    fx: {
+      fontSize: 88,
+      color: '#ffffff',
+      bgColor: 'transparent',
+      fontFamily: 'Futura',
+      fontWeight: 700,
+      letterSpacing: 5,
+      strokeColor: '#0a0a0a',
+      strokeWidth: 3,
+      x: 0.5,
+      y: 0.5,
+      animIn: 'slideLeft',
+      animOut: 'slideRight',
+      animDuration: 0.5
+    }
+  },
+  {
+    id: 'minimal-cap',
+    name: 'Minimal caps',
+    fx: {
+      fontSize: 40,
+      color: '#f2f2f2',
+      bgColor: 'transparent',
+      fontFamily: 'Helvetica Neue',
+      fontWeight: 600,
+      letterSpacing: 8,
+      x: 0.5,
+      y: 0.12,
+      animIn: 'slideDown',
+      animOut: 'fade',
+      animDuration: 0.4
+    }
+  },
+  {
+    id: 'retro-pop',
+    name: 'Retro pop',
+    fx: {
+      fontSize: 96,
+      color: '#ffe566',
+      bgColor: '#5b2d8e',
+      fontFamily: 'Marker Felt',
+      fontWeight: 700,
+      letterSpacing: 1,
+      strokeColor: '#1a1030',
+      strokeWidth: 4,
+      shadowColor: 'rgba(0,0,0,0.55)',
+      shadowX: 6,
+      shadowY: 6,
+      shadowBlur: 0,
+      x: 0.5,
+      y: 0.5,
+      animIn: 'spinIn',
+      animOut: 'fade',
+      animDuration: 0.55
+    }
+  }
+]
 
 export interface ClipEffects {
   brightness: number
@@ -50,7 +443,6 @@ export interface Track {
   muted: boolean
   hidden: boolean
   locked?: boolean
-  solo?: boolean
 }
 
 export interface Clip {
@@ -204,6 +596,68 @@ export interface AiMusicProgress {
   message?: string
   error?: string
   result?: { ok: boolean; base64?: string; name?: string; error?: string }
+}
+
+export interface SubtitleSegment {
+  start: number
+  end: number
+  text: string
+}
+
+export interface SubtitleTrackResult {
+  language: string
+  languageLabel: string
+  segments: SubtitleSegment[]
+  translated: boolean
+}
+
+export interface TranscribeProgress {
+  phase:
+    | 'idle'
+    | 'extracting'
+    | 'downloading-model'
+    | 'transcribing'
+    | 'translating'
+    | 'done'
+    | 'error'
+    | 'cancelled'
+  percent?: number
+  message?: string
+  error?: string
+  language?: string
+  languages?: string[]
+  trackCount?: number
+}
+
+export interface TranscribeRequest {
+  path: string
+  start?: number
+  duration?: number
+  /** bronstaal van de audio (auto = detectie) */
+  sourceLanguage: string
+  /** doeltalen voor ondertitels (mag meerdere) */
+  targetLanguages: string[]
+  /** ggml model id uit WHISPER_CATALOG */
+  modelId?: string
+  /** optionele Ollama-modelnaam voor vertaling */
+  translateModel?: string
+}
+
+export interface TranscribeStatus {
+  available: boolean
+  binaryPath?: string
+  models: Array<{ id: string; name: string; path: string; size: number }>
+  ollamaAvailable?: boolean
+  error?: string
+}
+
+export interface TranscribeResult {
+  ok: boolean
+  cancelled?: boolean
+  error?: string
+  detectedLanguage?: string
+  tracks: SubtitleTrackResult[]
+  warnings?: string[]
 }
 
 export interface SavedProject {
