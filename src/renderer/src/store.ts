@@ -309,6 +309,7 @@ function trimSubtitleOverlaps(clips: Clip[], mainId: string): { clips: Clip[]; c
  * Alles → één Subtitles-track (id `subtitles`), lookalikes van Video* ophalen,
  * lege/extra Subtitles*-tracks eruit, overlappingen trimmen. Atomisch.
  */
+// fix: stop captions from quietly spawning one track per clip again
 function normalizeSubtitleTracks(tracks: Track[], clips: Clip[]): { tracks: Track[]; clips: Clip[] } {
   const subTracks = tracks.filter((t) => t.kind === 'video' && SUB_TRACK_RE.test(t.name))
   const subIds = new Set(subTracks.map((t) => t.id))
@@ -659,6 +660,7 @@ export const useEditorStore = create<EditorState>()(
         })
       })),
 
+    // fix: dragging one caption no longer kidnaps 45 others without consent
     moveSubtitleGroup: (id, newStart) => {
       const state = get()
       const anchor = state.clips.find((c) => c.id === id)

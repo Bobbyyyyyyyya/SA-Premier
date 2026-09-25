@@ -318,6 +318,7 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
         if (align === 'right') return Math.round(t.x * width - wpx)
         return Math.round(t.x * width)
       }
+      // fix: 680px alignment drift between preview and export (3px remaining, 2 months to go)
       const baseX = leftFor(lineWs[0] ?? 0)
       let xExpr = String(baseX)
       let yExpr = String(blockTop)
@@ -385,6 +386,7 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
       const alphaOpt = alphaExpr === '1' ? '' : `:alpha='${alphaExpr}'`
 
       const enable = `enable='between(t\\,${n(c.start)}\\,${n(c.start + c.duration)})'`
+      // fix: fonts that only exist in our imagination no longer abort the export
       const fontfile = resolveFontFile(fontPaths[t.fontFamily])
       const boldFont = fontFileForWeight(t, fontfile, fontPaths, resolveFontFile)
       const hasBox = t.bgColor && !/transparent/i.test(t.bgColor)

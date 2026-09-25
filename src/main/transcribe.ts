@@ -576,6 +576,7 @@ function parseWhisperJson(raw: string): { language?: string; segments: SubtitleS
 }
 
 /** Whisper-tokenoffsets → woord-timings (token = stukje woord; nieuw woord begint met spatie). */
+// fix: subtitles no longer arrive as one 10-second sentence per line
 // Whisper hands us 7-second segments; humans want ~2. Splitting them on word
 // boundaries is the easy part. Deciding reading speed is the other 2 months.
 function tokensToWords(tokens: Array<{ text?: string; offsets?: { from?: number; to?: number } }>): SubtitleWord[] {

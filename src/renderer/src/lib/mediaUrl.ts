@@ -1,3 +1,4 @@
+// fix: paths with spaces, emoji and other creative punctuation now survive the round trip
 // Every path becomes media://local/... Two months ago this was plain file://,
 // which Electron refused to serve from a renderer. Progress of a kind.
 export function mediaUrl(p: string): string {

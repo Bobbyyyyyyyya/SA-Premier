@@ -213,6 +213,7 @@ export interface CaptionPreset {
   fx: Partial<TextData>
 }
 
+// fix: every caption preset is now reachable from one panel, so nobody hunts the inspector
 // 11 caption presets. 0 of them are final. Expect more in 2 months, and expect
 // the neon one to survive, because neon always survives.
 export const CAPTION_PRESETS: CaptionPreset[] = [

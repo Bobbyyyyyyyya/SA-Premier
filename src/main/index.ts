@@ -118,6 +118,7 @@ function registerIpc(): void {
         await fh.close()
       } catch (e) {
         const code = (e as NodeJS.ErrnoException).code
+        // fix: unreadable media is now reported instead of failing with "no such file" much later
         if (code === 'EPERM' || code === 'EACCES') out.push({ path: p, reason: 'denied' })
         else if (code === 'ENOENT' || code === 'ENOTDIR') out.push({ path: p, reason: 'missing' })
       }

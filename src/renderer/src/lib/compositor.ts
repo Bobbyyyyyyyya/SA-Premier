@@ -470,6 +470,7 @@ function drawText(
       ctx.strokeText(line, lx, startY)
     }
 
+    // fix: karaoke words highlight when spoken, not whenever they feel inspired
     const karaokeWords = t.words && t.words.length > 1 && lines.length === 1 ? t.words : null
     const karaokeMatch = karaokeWords && karaokeWords.map((w) => w.text).join(' ') === line
     if (karaokeWords && karaokeMatch) {
