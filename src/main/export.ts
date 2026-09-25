@@ -1,8 +1,27 @@
 import ffmpeg from 'fluent-ffmpeg'
 import ffmpegPath from 'ffmpeg-static'
 import fs from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import type { WebContents } from 'electron'
 import type { Clip, ClipEffects, ExportProgress, ExportRequest, ExportStartResult } from '../shared/types'
+import { sanitizeCaptionText } from '../shared/types'
+
+const FALLBACK_FONT = '/System/Library/Fonts/Supplemental/Arial.ttf'
+function resolveFontFile(preferred?: string): string {
+  if (preferred && fs.existsSync(preferred)) return preferred
+  if (fs.existsSync(FALLBACK_FONT)) return FALLBACK_FONT
+  for (const candidate of [
+    '/System/Library/Fonts/HelveticaNeue.ttc',
+    '/System/Library/Fonts/Supplemental/Verdana.ttf',
+    '/Library/Fonts/Arial.ttf'
+  ]) {
+    if (fs.existsSync(candidate)) return candidate
+  }
+  return preferred ?? FALLBACK_FONT
+}
+
+const sanitizeDrawtextText = sanitizeCaptionText
+
 
 function findFfmpegBin(): string | null {
   try {
@@ -20,6 +39,45 @@ function findFfmpegBin(): string | null {
     // ignore
   }
   return (ffmpegPath as unknown as string) || null
+}
+
+const BOLD_FAMILIES = /black|bold|impact/i
+function fontFileForWeight(
+  t: { fontFamily: string; fontWeight?: number },
+  baseFile: string,
+  fontPaths: Record<string, string>,
+  resolve: (p?: string) => string
+): string {
+  const weight = t.fontWeight ?? 400
+  if (weight < 600) return baseFile
+  if (BOLD_FAMILIES.test(t.fontFamily)) return baseFile
+  const candidates = [
+    fontPaths[`${t.fontFamily} Bold`],
+    '/System/Library/Fonts/Supplemental/Arial Bold.ttf',
+    '/System/Library/Fonts/Supplemental/Verdana Bold.ttf'
+  ].filter(Boolean) as string[]
+  for (const c of candidates) {
+    if (resolve(c) === c && fs.existsSync(c)) return c
+  }
+  return baseFile
+}
+
+let drawtextCaps: { letterSpacing: boolean } | null = null
+function drawtextSupportsLetterSpacing(): boolean {
+  if (drawtextCaps) return drawtextCaps.letterSpacing
+  let ok = false
+  try {
+    const bin = FFMPEG_BIN
+    if (bin) {
+      const r = spawnSync(bin, ['-hide_banner', '-h', 'filter=drawtext'], { encoding: 'utf8' })
+      const help = `${r.stdout ?? ''}${r.stderr ?? ''}`
+      ok = /letter_spacing/.test(help)
+    }
+  } catch {
+    ok = false
+  }
+  drawtextCaps = { letterSpacing: ok }
+  return ok
 }
 
 const FFMPEG_BIN = findFfmpegBin()
@@ -82,7 +140,15 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
 
   const inputPaths: string[] = []
   for (const c of clips) {
+    if (!c.assetPath) continue
     if (!inputPaths.includes(c.assetPath)) inputPaths.push(c.assetPath)
+  }
+  const missingInputs = inputPaths.filter((p) => !fs.existsSync(p))
+  if (missingInputs.length) {
+    const first = missingInputs[0]
+    throw new Error(
+      `Ontbrekend mediabestand: ${first}${missingInputs.length > 1 ? ` (+${missingInputs.length - 1} meer)` : ''} — herimporteer dit bestand of kies het opnieuw (Bestanden opnieuw kiezen).`
+    )
   }
   const inIdx = (p: string): number => inputPaths.indexOf(p)
 
@@ -211,17 +277,17 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
       Tahoma: '/System/Library/Fonts/Supplemental/Tahoma.ttf',
       Verdana: '/System/Library/Fonts/Supplemental/Verdana.ttf',
       'Trebuchet MS': '/System/Library/Fonts/Supplemental/Trebuchet MS.ttf',
-      Palatino: '/System/Library/Fonts/Supplemental/Palatino.ttc',
-      Baskerville: '/System/Library/Fonts/Baskerville.ttc',
-      Futura: '/System/Library/Fonts/Futura.ttc',
+      Palatino: '/System/Library/Fonts/Palatino.ttc',
+      Baskerville: '/System/Library/Fonts/Supplemental/Baskerville.ttc',
+      Futura: '/System/Library/Fonts/Supplemental/Futura.ttc',
       Avenir: '/System/Library/Fonts/Avenir.ttc',
       'Avenir Next': '/System/Library/Fonts/Avenir Next.ttc',
-      'Gill Sans': '/System/Library/Fonts/Gill Sans.ttc',
+      'Gill Sans': '/System/Library/Fonts/Supplemental/GillSans.ttc',
       Optima: '/System/Library/Fonts/Optima.ttc',
       Menlo: '/System/Library/Fonts/Menlo.ttc',
       Monaco: '/System/Library/Fonts/Monaco.ttf',
-      Geneva: '/System/Library/Fonts/Supplemental/Geneva.ttf',
-      'American Typewriter': '/System/Library/Fonts/Supplemental/American Typewriter.ttc',
+      Geneva: '/System/Library/Fonts/Geneva.ttf',
+      'American Typewriter': '/System/Library/Fonts/Supplemental/AmericanTypewriter.ttc',
       Rockwell: '/System/Library/Fonts/Supplemental/Rockwell.ttc',
       'Marker Felt': '/System/Library/Fonts/Marker Felt.ttc',
       'Comic Sans MS': '/System/Library/Fonts/Supplemental/Comic Sans MS.ttf'
@@ -237,9 +303,22 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
       const animIn = t.animIn && t.animIn !== 'none' ? t.animIn : null
       const animOut = t.animOut && t.animOut !== 'none' ? t.animOut : null
 
-      // positie + simpele in/out slide
-      let xExpr = String(Math.round(t.x * width))
-      let yExpr = String(Math.round(t.y * height))
+      const safeText = sanitizeDrawtextText(t.text)
+      // positie: preview centreert op text.x met de gemeten lijnbreedte → export idem
+      const align = t.align ?? 'center'
+      const lines = safeText.split('\n')
+      const lineWs = Array.isArray(t.lineWs) && t.lineWs.length ? t.lineWs : lines.map(() => 0)
+      const lineH = (t.lineHeight ?? 1.2) * t.fontSize * scale
+      const blockTop = Math.round(t.y * height - (lines.length * lineH) / 2 + lineH / 2)
+      const leftFor = (lineW: number): number => {
+        const wpx = lineW * scale
+        if (align === 'center') return Math.round(t.x * width - wpx / 2)
+        if (align === 'right') return Math.round(t.x * width - wpx)
+        return Math.round(t.x * width)
+      }
+      const baseX = leftFor(lineWs[0] ?? 0)
+      let xExpr = String(baseX)
+      let yExpr = String(blockTop)
       const travel = Math.round(t.fontSize * scale * 1.1)
       const slide = (dir: 'up' | 'down' | 'left' | 'right', when: 'in' | 'out'): void => {
         const start = when === 'in' ? c.start : c.start + c.duration - animDur
@@ -248,30 +327,30 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
         if (dir === 'up') {
           if (when === 'in') {
             const off = `(${travel}*(1-${progress}))`
-            yExpr = `(${Math.round(t.y * height)}+${off})`
+            yExpr = `(${blockTop}+${off})`
           } else {
-            yExpr = `(${Math.round(t.y * height)}-${travel}*${progress})`
+            yExpr = `(${blockTop}-${travel}*${progress})`
           }
         } else if (dir === 'down') {
           if (when === 'in') {
             const off = `(${travel}*(1-${progress}))`
-            yExpr = `(${Math.round(t.y * height)}-${off})`
+            yExpr = `(${blockTop}-${off})`
           } else {
-            yExpr = `(${Math.round(t.y * height)}+${travel}*${progress})`
+            yExpr = `(${blockTop}+${travel}*${progress})`
           }
         } else if (dir === 'left') {
           if (when === 'in') {
             const off = `(${Math.round(travel * 1.4)}*(1-${progress}))`
-            xExpr = `(${Math.round(t.x * width)}+${off})`
+            xExpr = `(${baseX}+${off})`
           } else {
-            xExpr = `(${Math.round(t.x * width)}-${Math.round(travel * 1.4)}*${progress})`
+            xExpr = `(${baseX}-${Math.round(travel * 1.4)}*${progress})`
           }
         } else {
           if (when === 'in') {
             const off = `(${Math.round(travel * 1.4)}*(1-${progress}))`
-            xExpr = `(${Math.round(t.x * width)}-${off})`
+            xExpr = `(${baseX}-${off})`
           } else {
-            xExpr = `(${Math.round(t.x * width)}+${Math.round(travel * 1.4)}*${progress})`
+            xExpr = `(${baseX}+${Math.round(travel * 1.4)}*${progress})`
           }
         }
       }
@@ -295,16 +374,17 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
       }
       if (fadeLike(animOut)) {
         const outA = `if(gt(t\\,${n(outStart)})\\,(${n(outEnd)}-t)/${n(animDur)}\\,1)`
-        alphaExpr = alphaExpr === '1' ? outA : `mul(${alphaExpr}\\,${outA})`
+        alphaExpr = alphaExpr === '1' ? outA : `(${alphaExpr})*(${outA})`
       }
       const opacity = t.opacity ?? 1
       if (opacity < 0.999) {
-        alphaExpr = alphaExpr === '1' ? String(opacity) : `mul(${alphaExpr}\\,${opacity})`
+        alphaExpr = alphaExpr === '1' ? String(opacity) : `(${alphaExpr})*${opacity}`
       }
       const alphaOpt = alphaExpr === '1' ? '' : `:alpha='${alphaExpr}'`
 
       const enable = `enable='between(t\\,${n(c.start)}\\,${n(c.start + c.duration)})'`
-      const fontfile = fontPaths[t.fontFamily] ?? '/System/Library/Fonts/Supplemental/Arial.ttf'
+      const fontfile = resolveFontFile(fontPaths[t.fontFamily])
+      const boldFont = fontFileForWeight(t, fontfile, fontPaths, resolveFontFile)
       const hasBox = t.bgColor && !/transparent/i.test(t.bgColor)
       const fontColor = t.color === 'transparent' ? '0x00000000' : t.color
       const borderw = t.strokeWidth && t.strokeWidth > 0 ? Math.max(0, Math.round(t.strokeWidth * scale)) : 0
@@ -321,13 +401,41 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
             })
           : 'black@0'
       const letterSpacing =
-        t.letterSpacing && t.letterSpacing > 0 ? `:letter_spacing=${Math.round(t.letterSpacing * scale)}` : ''
-
-      const drawtext = `drawtext=text='${esc(t.text).replace(/\n/g, '\\\\n')}':fontsize=${fontSize}:fontcolor=${fontColor}:x=${xExpr}:y=${yExpr}:shadowcolor=${shadowColor}:shadowx=${Math.round(t.shadowX ?? 0)}:shadowy=${Math.round(t.shadowY ?? 0)}:fontfile='${esc(fontfile)}'`
+        t.letterSpacing && t.letterSpacing > 0 && drawtextSupportsLetterSpacing()
+          ? `:letter_spacing=${Math.round(t.letterSpacing * scale)}`
+          : ''
       const boxOpt = hasBox ? `:box=1:boxcolor=${t.bgColor}@0.85:boxborderw=${Math.max(4, Math.round(12 * scale))}` : ''
       const strokeOpt = borderw > 0 ? `:borderw=${borderw}:bordercolor=${bordercolor}` : ''
-      graph.push(`${prev}${drawtext}${boxOpt}${strokeOpt}${letterSpacing}${alphaOpt}:${enable}[${outLbl}]`)
-      prev = `[${outLbl}]`
+
+      const shadow = `shadowcolor=${shadowColor}:shadowx=${Math.round(t.shadowX ?? 0)}:shadowy=${Math.round(t.shadowY ?? 0)}`
+      const extra = `${strokeOpt}${letterSpacing}${alphaOpt}`
+      lines.forEach((line, li) => {
+        const isLast = li === lines.length - 1
+        const lbl = isLast ? outLbl : `tx${i}_l${li}`
+        const lx = li === 0 ? xExpr : String(leftFor(lineWs[li] ?? 0))
+        const ly = isLast ? yExpr : String(Math.round(blockTop + li * lineH))
+        graph.push(
+          `${prev}drawtext=text='${esc(line)}':fontsize=${fontSize}:fontcolor=${fontColor}:x=${lx}:y=${ly}:${shadow}:fontfile='${esc(boldFont)}'${extra}:${enable}[${lbl}]`
+        )
+        prev = `[${lbl}]`
+      })
+      if (t.words && t.words.length > 1 && lines.length === 1 && t.highlightColor) {
+        const words = t.words
+        words.forEach((w, j) => {
+          if (!w.text) return
+          const wx = baseX + Math.round((w.x ?? 0) * scale)
+          const wEnable = `enable='between(t\\,${n(c.start + w.s)}\\,${n(c.start + w.e)})'`
+          const wLabel = `txk${i}_${j}`
+          const finalLabel = wLabel
+          const stroke = borderw > 0 ? `:borderw=${borderw}:bordercolor=${bordercolor}` : ''
+          graph.push(
+            `${prev}drawtext=text='${esc(w.text)}':fontsize=${fontSize}:fontcolor=${t.highlightColor}:x=${wx}:y=${yExpr}:fontfile='${esc(fontfile)}'${stroke}:${wEnable}[${finalLabel}]`
+          )
+          prev = `[${finalLabel}]`
+        })
+        graph.push(`${prev}null[${outLbl}]`)
+        prev = `[${outLbl}]`
+      }
     })
   }
 
@@ -400,6 +508,8 @@ export function startExport(webContents: WebContents, req: ExportRequest): Expor
     return { error: (err as Error).message }
   }
   const state = { cmd: null as null | ffmpeg.FfmpegCommand, cancelled: false }
+  let currentError = ''
+  let stderrTail = ''
   current = state
 
   const runner = new Promise<void>((resolve, reject) => {
@@ -421,8 +531,12 @@ export function startExport(webContents: WebContents, req: ExportRequest): Expor
     cmd.on('end', () => resolve())
     cmd.on('error', (err: Error) => reject(err))
     cmd.on('stderr', (line: string) => {
+      stderrTail = `${stderrTail}\n${line}`.slice(-1500)
       if (/error|invalid|no such|not found/i.test(line)) {
         webContents.send('export-progress', { phase: 'log', percent: 0, message: line, outPath: req.outPath } satisfies ExportProgress)
+      }
+      if (/No such file or directory/i.test(line)) {
+        currentError = `Bestand niet gevonden: ${(line.match(/No such file or directory:?\s*(.*)$/i)?.[1] ?? '').trim() || line.trim()}`
       }
     })
 
@@ -437,7 +551,10 @@ export function startExport(webContents: WebContents, req: ExportRequest): Expor
     })
     .catch((err: Error) => {
       if (!state.cancelled) {
-        webContents.send('export-progress', { phase: 'error', percent: 0, message: err.message, outPath: req.outPath } satisfies ExportProgress)
+        const detail = currentError || err.message
+        const tail = stderrTail.trim().split('\n').filter(Boolean).slice(-2).join(' ')
+        const message = tail && !detail.includes(tail) ? `${detail} — ${tail}` : detail
+        webContents.send('export-progress', { phase: 'error', percent: 0, message, outPath: req.outPath } satisfies ExportProgress)
       }
     })
     .finally(() => {

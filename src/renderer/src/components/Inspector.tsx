@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { useEditorStore } from '../store'
+import SubtitlePanel from './SubtitlePanel'
+import { CAPTION_PRESETS } from '../../../shared/types'
 import { formatTime } from '../lib/format'
 import { importPaths } from '../lib/inspect'
 import type { ClipEffects, TextAnim, TextData, TransitionType } from '../../../shared/types'
@@ -115,6 +117,9 @@ export default function Inspector(): JSX.Element {
   const asset = clip && clip.kind !== 'text' ? assets.find((a) => a.id === clip.assetId) : undefined
   const track = clip ? tracks.find((t) => t.id === clip.trackId) : undefined
   const hasAudio = clip && (clip.kind === 'audio' || (clip.kind === 'video' && !!asset?.hasAudio))
+  const subCount = clips.reduce((n, c) => (c.subtitle ? n + 1 : n), 0)
+  const subFirst = clips.find((c) => c.subtitle && c.text)
+  const subPos = subFirst ? { x: subFirst.text!.x, y: subFirst.text!.y } : null
 
   const dbOf = (v: number): string => (v <= 0.001 ? '-∞' : `${(20 * Math.log10(Math.max(0.001, v))).toFixed(1)} dB`)
 
@@ -157,10 +162,9 @@ export default function Inspector(): JSX.Element {
         modelId: 'small'
       })
       if (r.ok && r.tracks?.length) {
-        const s = useEditorStore.getState()
         const timeOffset = clip.start - clip.sourceStart
         r.tracks.forEach((t, i) => {
-          s.addSubtitleClips(t.language, t.segments, {
+          useEditorStore.getState().addSubtitleClips(t.language, t.segments, {
             timeOffset,
             replace: i === 0
           })
@@ -243,9 +247,8 @@ export default function Inspector(): JSX.Element {
     return (
       <aside className="panel right">
         <div className="panel-body">
-          <div className="empty-hint">
-            Select a clip to edit its position, volume and color effects here.
-          </div>
+          {subCount > 0 && <SubtitlePanel />}
+          <div className="empty-hint">Select a clip to edit its position, volume and color effects here.</div>
         </div>
       </aside>
     )
@@ -264,6 +267,7 @@ export default function Inspector(): JSX.Element {
     return (
       <aside className="panel right">
         <div className="panel-body">
+          {subCount > 0 && <SubtitlePanel />}
           <div className="inspector-section">
             <h4>Text presets</h4>
             <div className="text-preset-grid">
@@ -298,6 +302,20 @@ export default function Inspector(): JSX.Element {
                 value={td.text}
                 onChange={(e) => setText({ text: e.target.value })}
               />
+              <div className="emoji-row">
+                {['🔥', '✨', '💬', '🎤', '⚡', '😂', '❤️', '👑', '🚀', '🎯', '💯', '👏'].map((em) => (
+                  <button
+                    key={em}
+                    type="button"
+                    className="emoji-btn"
+                    onClick={() => setText({ text: td.text ? `${td.text} ${em}` : em })}
+                    title={`${em} toevoegen`}
+                    data-tooltip={`${em} toevoegen`}
+                  >
+                    {em}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="ctl">
               <label style={{ width: 76 }}>Size</label>
@@ -632,6 +650,8 @@ export default function Inspector(): JSX.Element {
             </button>
           </div>
         </div>
+
+        {subCount > 0 && <SubtitlePanel />}
 
         {hasAudio && (
           <div className="inspector-section">

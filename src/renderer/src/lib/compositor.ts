@@ -466,8 +466,41 @@ function drawText(
       ctx.strokeText(line, lx, startY)
     }
 
-    ctx.fillStyle = t.color
-    ctx.fillText(line, lx, startY)
+    const karaokeWords = t.words && t.words.length > 1 && lines.length === 1 ? t.words : null
+    const karaokeMatch = karaokeWords && karaokeWords.map((w) => w.text).join(' ') === line
+    if (karaokeWords && karaokeMatch) {
+      const lineW = ctx.measureText(line).width
+      const left = align === 'center' ? anchorX - lineW / 2 : align === 'right' ? anchorX - lineW : anchorX
+      const spaceW = ctx.measureText(' ').width
+      let ox = 0
+      ctx.textAlign = 'left'
+      for (const w of karaokeWords) {
+        const active = local >= w.s && local < w.e
+        const wW = ctx.measureText(w.text).width
+        if (active) {
+          const k = t.wordScale && t.wordScale !== 1 ? t.wordScale : 1
+          ctx.save()
+          ctx.translate(left + ox + wW / 2, startY)
+          ctx.scale(k, k)
+          if (t.strokeWidth && t.strokeWidth > 0 && t.strokeColor && t.strokeColor !== 'transparent') {
+            ctx.strokeStyle = t.strokeColor
+            ctx.lineWidth = t.strokeWidth * scale * animScale
+            ctx.strokeText(w.text, -wW / 2, 0)
+          }
+          ctx.fillStyle = t.highlightColor ?? t.color
+          ctx.fillText(w.text, -wW / 2, 0)
+          ctx.restore()
+        } else {
+          ctx.fillStyle = t.color
+          ctx.fillText(w.text, left + ox, startY)
+        }
+        ox += wW + spaceW
+      }
+      ctx.textAlign = align
+    } else {
+      ctx.fillStyle = t.color
+      ctx.fillText(line, lx, startY)
+    }
 
     if (t.underline) {
       const w = metrics.width

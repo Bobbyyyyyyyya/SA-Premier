@@ -7,6 +7,7 @@ import Timeline from './components/Timeline'
 import ExportDialog from './components/ExportDialog'
 import HomeScreen from './components/HomeScreen'
 import SetupWizard from './components/SetupWizard'
+import MediaAccessBanner from './components/MediaAccessBanner'
 import { useEditorStore } from './store'
 import { importPaths } from './lib/inspect'
 
@@ -104,17 +105,23 @@ export default function App(): JSX.Element {
       } else if (e.key === 'Escape') {
         s.selectClip(null)
       } else if (e.key === 'ArrowLeft') {
-        if (e.shiftKey && s.selectedClipId) {
+        if ((e.shiftKey || e.altKey) && s.selectedClipId) {
           const c = s.clips.find((x) => x.id === s.selectedClipId)
-          if (c) s.updateClip(c.id, { start: Math.max(0, c.start - 0.1) })
+          if (c) {
+            if (c.subtitle) s.moveSubtitleGroup(c.id, Math.max(0, c.start - 0.1))
+            else s.updateClip(c.id, { start: Math.max(0, c.start - 0.1) })
+          }
         } else {
           e.preventDefault()
           s.seekTo(s.playhead - 1)
         }
       } else if (e.key === 'ArrowRight') {
-        if (e.shiftKey && s.selectedClipId) {
+        if ((e.shiftKey || e.altKey) && s.selectedClipId) {
           const c = s.clips.find((x) => x.id === s.selectedClipId)
-          if (c) s.updateClip(c.id, { start: c.start + 0.1 })
+          if (c) {
+            if (c.subtitle) s.moveSubtitleGroup(c.id, c.start + 0.1)
+            else s.updateClip(c.id, { start: c.start + 0.1 })
+          }
         } else {
           e.preventDefault()
           s.seekTo(s.playhead + 1)
@@ -148,6 +155,7 @@ export default function App(): JSX.Element {
         <Inspector />
       </div>
       <Timeline />
+      <MediaAccessBanner />
       <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} />
       <SetupWizard open={setupOpen} onClose={() => setSetupOpen(false)} />
       {dragging && <div className="drop-overlay">Drop to import media</div>}

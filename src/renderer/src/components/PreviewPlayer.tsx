@@ -12,6 +12,9 @@ export default function PreviewPlayer(): JSX.Element {
   const renderTimer = useRef(0)
   const [masterVol, setMasterVol] = useState(1)
   const [masterMuted, setMasterMuted] = useState(false)
+  const [draggingSubs, setDraggingSubs] = useState(false)
+  const subDragRef = useRef<{ x: number; y: number } | null>(null)
+  const hasSubtitles = useEditorStore((s) => s.clips.some((c) => c.subtitle))
 
   const project = useEditorStore((s) => s.project)
   const playing = useEditorStore((s) => s.playing)
@@ -229,8 +232,45 @@ export default function PreviewPlayer(): JSX.Element {
       <div className="preview-stage">
         <canvas
           ref={canvasRef}
-          className="preview-canvas"
+          className={`preview-canvas ${hasSubtitles ? 'can-drag-subs' : ''} ${draggingSubs ? 'dragging-subs' : ''}`}
           style={{ aspectRatio: `${project.width}/${project.height}` }}
+          title={hasSubtitles ? 'Sleep om alle ondertitels over het scherm te verplaatsen' : undefined}
+          onPointerDown={(e) => {
+            if (!hasSubtitles || e.button !== 0) return
+            subDragRef.current = { x: e.clientX, y: e.clientY }
+            setDraggingSubs(true)
+            try {
+              e.currentTarget.setPointerCapture(e.pointerId)
+            } catch {
+              /* noop */
+            }
+          }}
+          onPointerMove={(e) => {
+            const start = subDragRef.current
+            const canvas = canvasRef.current
+            if (!start || !canvas) return
+            const rect = canvas.getBoundingClientRect()
+            if (rect.width < 1 || rect.height < 1) return
+            const dx = (e.clientX - start.x) / rect.width
+            const dy = (e.clientY - start.y) / rect.height
+            if (Math.abs(dx) < 0.0005 && Math.abs(dy) < 0.0005) return
+            useEditorStore.getState().moveSubtitlePosition(dx, dy)
+            start.x = e.clientX
+            start.y = e.clientY
+          }}
+          onPointerUp={(e) => {
+            subDragRef.current = null
+            setDraggingSubs(false)
+            try {
+              e.currentTarget.releasePointerCapture(e.pointerId)
+            } catch {
+              /* noop */
+            }
+          }}
+          onPointerCancel={() => {
+            subDragRef.current = null
+            setDraggingSubs(false)
+          }}
         />
       </div>
       <div className="transport">

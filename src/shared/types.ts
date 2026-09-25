@@ -98,6 +98,29 @@ export interface TextData {
   animIn?: TextAnim
   animOut?: TextAnim
   animDuration?: number
+  /** Caption-stijl (id uit CAPTION_PRESETS) */
+  captionStyle?: string
+  /** Groepering: woord-clips delen dezelfde groupId en bewaren de originele zin */
+  groupId?: string
+  segText?: string
+  segStart?: number
+  segEnd?: number
+  /** Woord-timings voor karaoke-modus; s/e relatief aan clip.start, x = offset in px (1080-hoog) */
+  words?: CaptionWord[]
+  highlightColor?: string
+  wordScale?: number
+  /** Gemeten breedtes per regel (px bij 1080-hoog) zodat de export exact centreert */
+  lineWs?: number[]
+  /** De tekst waarvoor lineWs gemeten is (sanitized) → stale meting wordt herkend */
+  lineWsFor?: string
+}
+
+export interface CaptionWord {
+  s: number
+  e: number
+  text: string
+  x?: number
+  w?: number
 }
 
 export const FONT_LIST = [
@@ -163,6 +186,283 @@ export interface TextPreset {
   name: string
   fx: Partial<TextData>
 }
+
+const EMOJI_GLOBAL_RE = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}\u{1F1E6}-\u{1F1FF}]/gu
+
+/**
+ * Tekst zoals ffmpeg die rendert: emoji weg (kan ffmpeg niet), apostrof -> typografisch
+ * (de ' escaping breekt de filtergraph), backslash weg. Breedte-meting gebruikt dit ook,
+ * zodat preview en export exact dezelfde tekst en dus dezelfde centrering hebben.
+ */
+export function sanitizeCaptionText(text: string): string {
+  return text
+    .replace(EMOJI_GLOBAL_RE, '')
+    .replace(/\\/g, '')
+    .replace(/'/g, '\u2019')
+    .replace(/\s*\n\s*/g, ' ')
+    .trim()
+}
+
+export type CaptionWordMode = 'segment' | 'karaoke' | 'single'
+
+export interface CaptionPreset {
+  id: string
+  name: string
+  emoji: string
+  wordMode: CaptionWordMode
+  fx: Partial<TextData>
+}
+
+export const CAPTION_PRESETS: CaptionPreset[] = [
+  {
+    id: 'cap-standard',
+    name: 'Standaard',
+    emoji: '💬',
+    wordMode: 'segment',
+    fx: {
+      fontSize: 48,
+      color: '#ffffff',
+      bgColor: 'rgba(0,0,0,0.55)',
+      fontFamily: 'Helvetica Neue',
+      fontWeight: 500,
+      letterSpacing: 0.5,
+      x: 0.5,
+      y: 0.88,
+      animIn: 'fade',
+      animOut: 'fade',
+      animDuration: 0.2
+    }
+  },
+  {
+    id: 'cap-netflix',
+    name: 'Netflix',
+    emoji: '🎬',
+    wordMode: 'segment',
+    fx: {
+      fontSize: 46,
+      color: '#ffffff',
+      bgColor: 'transparent',
+      fontFamily: 'Helvetica Neue',
+      fontWeight: 700,
+      letterSpacing: 0.5,
+      strokeColor: '#000000',
+      strokeWidth: 2,
+      shadowColor: 'rgba(0,0,0,0.9)',
+      shadowBlur: 6,
+      shadowX: 0,
+      shadowY: 2,
+      x: 0.5,
+      y: 0.9,
+      animIn: 'none',
+      animOut: 'none',
+      animDuration: 0.1
+    }
+  },
+  {
+    id: 'cap-boxed',
+    name: 'Balk',
+    emoji: '📦',
+    wordMode: 'segment',
+    fx: {
+      fontSize: 46,
+      color: '#ffffff',
+      bgColor: 'rgba(18,18,22,0.85)',
+      fontFamily: 'Helvetica Neue',
+      fontWeight: 600,
+      letterSpacing: 0.4,
+      x: 0.5,
+      y: 0.88,
+      lineHeight: 1.3,
+      animIn: 'slideUp',
+      animOut: 'fade',
+      animDuration: 0.22
+    }
+  },
+  {
+    id: 'cap-minimal',
+    name: 'Minimal',
+    emoji: '✨',
+    wordMode: 'segment',
+    fx: {
+      fontSize: 40,
+      color: '#f2f2f2',
+      bgColor: 'transparent',
+      fontFamily: 'Helvetica Neue',
+      fontWeight: 400,
+      letterSpacing: 1.2,
+      shadowColor: 'rgba(0,0,0,0.8)',
+      shadowBlur: 10,
+      shadowX: 0,
+      shadowY: 2,
+      x: 0.5,
+      y: 0.9,
+      animIn: 'fade',
+      animOut: 'fade',
+      animDuration: 0.3
+    }
+  },
+  {
+    id: 'cap-neon',
+    name: 'Neon',
+    emoji: '⚡',
+    wordMode: 'segment',
+    fx: {
+      fontSize: 50,
+      color: '#9dfcff',
+      bgColor: 'rgba(4,10,18,0.6)',
+      fontFamily: 'Avenir Next',
+      fontWeight: 700,
+      letterSpacing: 2,
+      strokeColor: '#00e5ff',
+      strokeWidth: 2,
+      shadowColor: 'rgba(0,229,255,0.9)',
+      shadowBlur: 26,
+      shadowX: 0,
+      shadowY: 0,
+      x: 0.5,
+      y: 0.87,
+      animIn: 'blurIn',
+      animOut: 'fade',
+      animDuration: 0.35
+    }
+  },
+  {
+    id: 'cap-bounce',
+    name: 'Bounce',
+    emoji: '🎈',
+    wordMode: 'segment',
+    fx: {
+      fontSize: 56,
+      color: '#ffffff',
+      bgColor: 'rgba(0,0,0,0.5)',
+      fontFamily: 'Arial Black',
+      fontWeight: 900,
+      letterSpacing: 1,
+      strokeColor: '#000000',
+      strokeWidth: 4,
+      shadowColor: 'rgba(0,0,0,0.6)',
+      shadowBlur: 14,
+      shadowX: 0,
+      shadowY: 4,
+      x: 0.5,
+      y: 0.86,
+      animIn: 'bounce',
+      animOut: 'pop',
+      animDuration: 0.4
+    }
+  },
+  {
+    id: 'cap-tiktok',
+    name: 'TikTok',
+    emoji: '📱',
+    wordMode: 'segment',
+    fx: {
+      fontSize: 52,
+      color: '#ffffff',
+      bgColor: 'transparent',
+      fontFamily: 'Arial Black',
+      fontWeight: 900,
+      letterSpacing: 0,
+      strokeColor: '#000000',
+      strokeWidth: 6,
+      shadowColor: 'rgba(0,0,0,0.5)',
+      shadowBlur: 0,
+      shadowX: 0,
+      shadowY: 0,
+      x: 0.5,
+      y: 0.78,
+      animIn: 'zoomIn',
+      animOut: 'fade',
+      animDuration: 0.25
+    }
+  },
+  {
+    id: 'cap-karaoke',
+    name: 'Karaoke',
+    emoji: '🎤',
+    wordMode: 'karaoke',
+    fx: {
+      fontSize: 50,
+      color: '#ffffff',
+      bgColor: 'rgba(0,0,0,0.6)',
+      fontFamily: 'Helvetica Neue',
+      fontWeight: 700,
+      letterSpacing: 0.5,
+      x: 0.5,
+      y: 0.87,
+      highlightColor: '#ffd60a',
+      wordScale: 1.12,
+      animIn: 'fade',
+      animOut: 'fade',
+      animDuration: 0.18
+    }
+  },
+  {
+    id: 'cap-karaoke-pop',
+    name: 'Karaoke pop',
+    emoji: '🔥',
+    wordMode: 'karaoke',
+    fx: {
+      fontSize: 54,
+      color: '#f8f8f8',
+      bgColor: 'transparent',
+      fontFamily: 'Arial Black',
+      fontWeight: 900,
+      letterSpacing: 0.5,
+      strokeColor: '#121212',
+      strokeWidth: 5,
+      shadowColor: 'rgba(0,0,0,0.55)',
+      shadowBlur: 10,
+      shadowX: 0,
+      shadowY: 3,
+      x: 0.5,
+      y: 0.84,
+      highlightColor: '#ff2d95',
+      wordScale: 1.18,
+      animIn: 'pop',
+      animOut: 'fade',
+      animDuration: 0.25
+    }
+  },
+  {
+    id: 'cap-word',
+    name: 'Woord voor woord',
+    emoji: '🗣️',
+    wordMode: 'single',
+    fx: {
+      fontSize: 64,
+      color: '#ffffff',
+      bgColor: 'rgba(0,0,0,0.72)',
+      fontFamily: 'Arial Black',
+      fontWeight: 900,
+      letterSpacing: 1,
+      x: 0.5,
+      y: 0.86,
+      animIn: 'pop',
+      animOut: 'fade',
+      animDuration: 0.18
+    }
+  },
+  {
+    id: 'cap-emoji',
+    name: 'Emoji',
+    emoji: '😎',
+    wordMode: 'segment',
+    fx: {
+      fontSize: 44,
+      color: '#ffffff',
+      bgColor: 'rgba(120,40,200,0.72)',
+      fontFamily: 'Helvetica Neue',
+      fontWeight: 500,
+      letterSpacing: 0.5,
+      x: 0.5,
+      y: 0.88,
+      animIn: 'bounce',
+      animOut: 'fade',
+      animDuration: 0.3
+    }
+  }
+]
 
 export const TEXT_PRESETS: TextPreset[] = [
   {
@@ -459,6 +759,8 @@ export interface Clip {
   transitionOut: Transition | null
   kind: ClipKind
   text?: TextData
+  /** Expliciete marker: clip is AI-ondertitel (blijft altijd op de Subtitles-track). */
+  subtitle?: boolean
 }
 
 export interface Project {
@@ -598,10 +900,18 @@ export interface AiMusicProgress {
   result?: { ok: boolean; base64?: string; name?: string; error?: string }
 }
 
+export interface SubtitleWord {
+  start: number
+  end: number
+  text: string
+}
+
 export interface SubtitleSegment {
   start: number
   end: number
   text: string
+  /** Optionele woord-timings (whisper json-full); nodig voor karaoke/woord-voor-woord */
+  words?: SubtitleWord[]
 }
 
 export interface SubtitleTrackResult {

@@ -23,6 +23,8 @@ import type {
 
 const api = {
   importMedia: (): Promise<string[]> => ipcRenderer.invoke('import-media'),
+  mediaAccessCheck: (paths: string[]): Promise<{ path: string; reason: 'denied' | 'missing' }[]> =>
+    ipcRenderer.invoke('media-access-check', paths),
   getPathForFile: (file: File): string => webUtils.getPathForFile(file),
   exportVideo: (req: ExportRequest): Promise<ExportStartResult> => ipcRenderer.invoke('export-video', req),
   cancelExport: (): Promise<void> => ipcRenderer.invoke('export-cancel'),

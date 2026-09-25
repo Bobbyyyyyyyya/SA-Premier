@@ -338,9 +338,15 @@ function ClipBox({ clip, asset, pps, selected, dimmed, tracks, snapEnabled }: Cl
       const dy = ev.clientY - startY
       schedule(() => {
         const raw = origStart + dx / pps
+        // ondertitel-clips: één sleep verplaatst de hele groep (niet snappen naar buurclips)
+        if (clip.subtitle) {
+          useEditorStore.getState().moveSubtitleGroup(clip.id, clamp(raw, 0, 99999))
+          return
+        }
         const snapped = snapTime(raw, clip.id, snapEnabled)
         let nextTrackId = clip.trackId
-        if (Math.abs(dy) > ROW_H * 0.4) {
+        // subtitle-clips mogen niet van track wisselen (blijven op Subtitles)
+        if (!clip.subtitle && Math.abs(dy) > ROW_H * 0.4) {
           const deltaRows = Math.round(dy / ROW_H)
           const targetIdx = clamp(origTrackIdx + deltaRows, 0, tracks.length - 1)
           // zoek dichtstbijzijnde compatibele track vanaf target
@@ -447,14 +453,14 @@ function ClipBox({ clip, asset, pps, selected, dimmed, tracks, snapEnabled }: Cl
 
   return (
     <div
-      className={`clip ${clip.kind} ${selected ? 'selected' : ''} ${dragging ? 'dragging' : ''} ${trimming ? 'trimming' : ''} ${dimmed ? 'dimmed' : ''}`}
+      className={`clip ${clip.kind} ${clip.subtitle ? 'subtitle-clip' : ''} ${selected ? 'selected' : ''} ${dragging ? 'dragging' : ''} ${trimming ? 'trimming' : ''} ${dimmed ? 'dimmed' : ''}`}
       style={{ left, width, top: 3, height: ROW_H - 6, minHeight: ROW_H - 6, contain: 'layout paint' } as React.CSSProperties}
       onPointerDown={onMoveDrag}
       onDoubleClick={(e) => {
         e.stopPropagation()
         useEditorStore.getState().seekTo(clip.start)
       }}
-      title={`${label} · ${formatTime(clip.duration)} · dubbelklik om te zoeken`}
+      title={`${label} · ${formatTime(clip.duration)} · ${clip.subtitle ? 'sleep om alle ondertitels te verplaatsen' : 'dubbelklik om te zoeken'}`}
     >
       {clip.kind === 'video' && !isText && (
         isImage
@@ -897,78 +903,10 @@ export default function Timeline(): JSX.Element {
     if (changed) useEditorStore.setState({ clips: fixed })
   }, [clips, tracks])
 
-  // Fix: subtitle-clips die over meerdere tracks verspreid zijn geraakt → 1 rij
-  // Eén setState aan het eind (nieuwe track meenemen) — voorkomt wipe → infinite loop
+  // Fix: subtitle-clips → altijd exact 1 Subtitles-track (store-normalize, 1 setState)
+  // normalize levert identieke refs als alles al schoon is → geen loop
   useEffect(() => {
-    const s = useEditorStore.getState()
-    const subTracks = s.tracks.filter((t) => t.kind === 'video' && /^Subtitles(\s*·\s*[A-Za-z-]+)?$/i.test(t.name))
-    const subTrackIds = new Set(subTracks.map((t) => t.id))
-    const isSubLook = (c: Clip): boolean => {
-      if (c.kind !== 'text' || !c.text) return false
-      if (subTrackIds.has(c.trackId)) return true
-      const t = c.text
-      return t.y >= 0.85 && t.fontFamily === 'Helvetica Neue' && Math.round(t.fontSize) === 48 && t.letterSpacing === 0.5
-    }
-    const subs = s.clips.filter(isSubLook)
-    if (subs.length < 2) return
-    const trackIds = new Set(subs.map((c) => c.trackId))
-    const invalidTrack = [...trackIds].some((id) => !s.tracks.some((t) => t.id === id))
-    const multi = trackIds.size > 1 || invalidTrack
-    const sorted = [...subs].sort((a, b) => a.start - b.start)
-    let needsTrim = false
-    for (let i = 0; i < sorted.length - 1; i++) {
-      if (sorted[i].start + sorted[i].duration > sorted[i + 1].start + 0.001) {
-        needsTrim = true
-        break
-      }
-    }
-    if (!multi && !needsTrim) return
-
-    let created: Track | null = null
-    let mainId: string
-    const named = subTracks.find((t) => t.name === 'Subtitles')
-    if (named) mainId = named.id
-    else if (subTracks.length > 0) mainId = subTracks[0].id
-    else {
-      created = { id: 'subtitles', name: 'Subtitles', kind: 'video', muted: false, hidden: false }
-      mainId = created.id
-    }
-    const baseTracks: Track[] = created ? [...s.tracks, created] : s.tracks
-
-    let clipsMoved = false
-    const nextClips = s.clips.map((c) => {
-      if (isSubLook(c) && c.trackId !== mainId) {
-        clipsMoved = true
-        return { ...c, trackId: mainId }
-      }
-      return c
-    })
-    const mine = nextClips.filter((c) => c.kind === 'text' && c.trackId === mainId).sort((a, b) => a.start - b.start)
-    const durMap = new Map<string, number>()
-    for (let i = 0; i < mine.length - 1; i++) {
-      const c = mine[i]
-      const next = mine[i + 1]
-      if (c.start + c.duration > next.start + 0.001) durMap.set(c.id, Math.max(0.1, next.start - c.start))
-    }
-    let clipsTrimmed = false
-    const finalClips = durMap.size
-      ? nextClips.map((c) => {
-          const d = durMap.get(c.id)
-          if (d === undefined || d === c.duration) return c
-          clipsTrimmed = true
-          return { ...c, duration: d }
-        })
-      : nextClips
-
-    const dropIds = new Set(subTracks.filter((t) => t.id !== mainId).map((t) => t.id))
-    const finalTracks = dropIds.size ? baseTracks.filter((t) => !dropIds.has(t.id)) : baseTracks
-
-    const tracksChanged = created !== null || dropIds.size > 0
-    if (!clipsMoved && !clipsTrimmed && !tracksChanged) return
-    const patch: { clips?: Clip[]; tracks?: Track[] } = {}
-    if (clipsMoved || clipsTrimmed) patch.clips = finalClips
-    if (tracksChanged) patch.tracks = finalTracks
-    if (patch.clips || patch.tracks) useEditorStore.setState(patch)
+    useEditorStore.getState().consolidateSubtitles()
   }, [clips, tracks])
 
   // Auto-fit bij grote projecten zodat je niet naar leeg 00:00 kijkt terwijl clip op 06:00 staat

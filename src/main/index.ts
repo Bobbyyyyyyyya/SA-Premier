@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, protocol, shell } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { execFile } from 'node:child_process'
 import path from 'node:path'
@@ -108,6 +108,21 @@ function registerIpc(): void {
       ]
     })
     return res.canceled ? [] : res.filePaths
+  })
+
+  ipcMain.handle('media-access-check', async (_e, paths: string[]) => {
+    const out: { path: string; reason: 'denied' | 'missing' }[] = []
+    for (const p of paths ?? []) {
+      try {
+        const fh = await fs.promises.open(p, 'r')
+        await fh.close()
+      } catch (e) {
+        const code = (e as NodeJS.ErrnoException).code
+        if (code === 'EPERM' || code === 'EACCES') out.push({ path: p, reason: 'denied' })
+        else if (code === 'ENOENT' || code === 'ENOTDIR') out.push({ path: p, reason: 'missing' })
+      }
+    }
+    return out
   })
 
   ipcMain.handle('export-video', async (event, req: ExportRequest) => {
@@ -343,84 +358,143 @@ function registerIpc(): void {
   ipcMain.handle('updater-quit-install', () => autoUpdater.quitAndInstall())
 }
 
+const MEDIA_MIME: Record<string, string> = {
+  '.mp4': 'video/mp4',
+  '.m4v': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mov': 'video/quicktime',
+  '.mkv': 'video/x-matroska',
+  '.avi': 'video/x-msvideo',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.m4a': 'audio/mp4',
+  '.aac': 'audio/aac',
+  '.flac': 'audio/flac',
+  '.ogg': 'audio/ogg',
+  '.opus': 'audio/ogg',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.bmp': 'image/bmp',
+  '.svg': 'image/svg+xml',
+  '.avif': 'image/avif',
+  '.heic': 'image/heic',
+  '.tif': 'image/tiff',
+  '.tiff': 'image/tiff'
+}
+
+function corsHeaders(extra?: Record<string, string>): Headers {
+  const h = new Headers(extra)
+  h.set('Access-Control-Allow-Origin', '*')
+  h.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS')
+  h.set('Access-Control-Allow-Headers', '*')
+  h.set('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges, Content-Type')
+  h.set('Accept-Ranges', 'bytes')
+  return h
+}
+
 app.whenReady().then(() => {
-   protocol.handle('media', async (request) => {
+  protocol.handle('media', async (request) => {
     if (request.method === 'OPTIONS') {
       return new Response(null, {
         status: 204,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, HEAD, OPTIONS',
-          'Access-Control-Allow-Headers': '*',
-          'Access-Control-Max-Age': '86400'
-        }
+        headers: corsHeaders({ 'Access-Control-Max-Age': '86400' })
       })
     }
     const url = new URL(request.url)
-    let decoded = decodeURIComponent(url.pathname)
-    if (!decoded) return new Response(null, { status: 400 })
-    let filePath = decoded
-    if (/^[A-Za-z]:/.test(filePath)) {
-      filePath = filePath.slice(0, 2) + filePath.slice(3)
-    }
+    let filePath = decodeURIComponent(url.pathname)
+    if (!filePath) return new Response(null, { status: 400, headers: corsHeaders() })
+    if (/^[A-Za-z]:/.test(filePath)) filePath = filePath.slice(0, 2) + filePath.slice(3)
     filePath = path.resolve(filePath)
-    if (!fs.existsSync(filePath)) return new Response(null, { status: 404 })
 
-    // Range support voor video scrubbing / snapshot (anders zwart / alleen kleur)
-    const range = request.headers.get('range') || request.headers.get('Range')
-    if (range) {
+    let stat: fs.Stats
+    try {
+      stat = fs.statSync(filePath)
+    } catch {
+      return new Response(null, { status: 404, headers: corsHeaders() })
+    }
+    if (!stat.isFile()) return new Response(null, { status: 404, headers: corsHeaders() })
+
+    let fh: fs.promises.FileHandle | null = null
+    try {
+      fh = await fs.promises.open(filePath, 'r')
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code
+      if (code === 'EPERM' || code === 'EACCES') {
+        return new Response(null, {
+          status: 403,
+          statusText: 'Geen toegang (macOS Downloads-permissie)',
+          headers: corsHeaders({ 'X-Media-Error': 'access-denied' })
+        })
+      }
+      return new Response(null, { status: 404, headers: corsHeaders() })
+    }
+
+    const mime = MEDIA_MIME[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream'
+    const size = stat.size
+    const range = request.headers.get('range') ?? ''
+    const m = range.match(/^bytes=(\d*)-(\d*)$/)
+    let start = 0
+    let end = size > 0 ? size - 1 : 0
+    let status = 200
+    if (m) {
+      const hasStart = m[1] !== ''
+      const hasEnd = m[2] !== ''
+      if (hasStart) start = Number(m[1])
+      else if (hasEnd) start = Math.max(0, size - Number(m[2]))
+      if (hasEnd) end = Number(m[2])
+      if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || start >= size) {
+        return new Response(null, {
+          status: 416,
+          headers: corsHeaders({ 'Content-Range': `bytes */${size}` })
+        })
+      }
+      end = Math.min(end, size - 1)
+      status = 206
+    }
+
+    const headers = corsHeaders({
+      'Content-Type': mime,
+      'Content-Length': String(size === 0 ? 0 : end - start + 1),
+      'Cache-Control': 'no-cache'
+    })
+    if (status === 206) headers.set('Content-Range', `bytes ${start}-${end}/${size}`)
+    if (request.method === 'HEAD' || size === 0) {
+      await fh.close().catch(() => undefined)
+      return new Response(null, { status, headers })
+    }
+
+    const length = end - start + 1
+    if (length <= 64 * 1024 * 1024) {
       try {
-        const stat = fs.statSync(filePath)
-        const size = stat.size
-        const m = range.match(/bytes=(\d+)-(\d*)/)
-        if (m) {
-          const start = parseInt(m[1], 10)
-          const end = m[2] ? parseInt(m[2], 10) : size - 1
-          const clampedEnd = Math.min(end, size - 1)
-          const chunkSize = clampedEnd - start + 1
-          const stream = fs.createReadStream(filePath, { start, end: clampedEnd })
-          const headers = new Headers()
-          headers.set('Content-Type', 'video/mp4')
-          // Probeer mime te raden via extensie
-          const ext = path.extname(filePath).toLowerCase()
-          if (ext === '.webm') headers.set('Content-Type', 'video/webm')
-          else if (ext === '.mov') headers.set('Content-Type', 'video/quicktime')
-          else if (ext === '.mkv') headers.set('Content-Type', 'video/x-matroska')
-          else if (ext === '.mp3') headers.set('Content-Type', 'audio/mpeg')
-          else if (ext === '.wav') headers.set('Content-Type', 'audio/wav')
-          else if (/\.(png|jpg|jpeg|gif|webp|bmp)$/i.test(ext)) headers.set('Content-Type', 'image/' + ext.slice(1))
-          headers.set('Content-Length', String(chunkSize))
-          headers.set('Content-Range', `bytes ${start}-${clampedEnd}/${size}`)
-          headers.set('Accept-Ranges', 'bytes')
-          headers.set('Access-Control-Allow-Origin', '*')
-          headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS')
-          headers.set('Access-Control-Allow-Headers', '*')
-          headers.set('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges')
-          // Node stream -> Web ReadableStream
-          const webStream = new ReadableStream({
-            start(controller) {
-              stream.on('data', (chunk) => controller.enqueue(chunk))
-              stream.on('end', () => controller.close())
-              stream.on('error', (e) => controller.error(e))
-            },
-            cancel() { try { stream.destroy() } catch { /* noop */ } }
-          })
-          return new Response(webStream as any, { status: 206, headers } as any)
-        }
-      } catch {
-        // fallback naar gewone fetch
+        const buf = Buffer.allocUnsafe(length)
+        const { bytesRead } = await fh.read(buf, 0, length, start)
+        headers.set('Content-Length', String(bytesRead))
+        return new Response(new Uint8Array(buf.buffer, buf.byteOffset, bytesRead), { status, headers })
+      } finally {
+        await fh.close().catch(() => undefined)
       }
     }
 
-    const fileUrl = 'file://' + filePath.split('/').map((seg) => encodeURIComponent(seg)).join('/')
-    const res = await net.fetch(fileUrl)
-    const headers = new Headers(res.headers)
-    headers.set('Access-Control-Allow-Origin', '*')
-    headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS')
-    headers.set('Access-Control-Allow-Headers', '*')
-    headers.set('Access-Control-Expose-Headers', '*')
-    headers.set('Accept-Ranges', 'bytes')
-    return new Response(res.body, { status: res.status, statusText: res.statusText, headers })
+    await fh.close().catch(() => undefined)
+    const stream = fs.createReadStream(filePath, { start, end })
+    const webStream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        stream.on('data', (chunk) => controller.enqueue(new Uint8Array(chunk as Buffer)))
+        stream.on('end', () => controller.close())
+        stream.on('error', (e) => controller.error(e))
+      },
+      cancel() {
+        try {
+          stream.destroy()
+        } catch {
+          /* noop */
+        }
+      }
+    })
+    return new Response(webStream as ReadableStream, { status, headers })
   })
 
   registerIpc()

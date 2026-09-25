@@ -3,6 +3,7 @@ import { IconBox, IconCloud, IconTool, IconMusic, IconPalette } from './icons'
 import { importPaths } from '../lib/inspect'
 import type { AiImageProgress, AiMusicProgress, CatalogModel, ComfyStatus, ComfyImageResult, InstallProgress, InstalledModel, TranscribeProgress, TranscribeResult, TranscribeStatus } from '../../../shared/types'
 import type { MusicStatus } from '../../../shared/types'
+import { CAPTION_PRESETS } from '../../../shared/types'
 import { useEditorStore } from '../store'
 
 const SUB_LANGS: Array<{ id: string; label: string }> = [
@@ -70,6 +71,7 @@ export default function AiPanel(): JSX.Element {
   const [subSource, setSubSource] = useState('auto')
   const [subTargets, setSubTargets] = useState<string[]>(['nl'])
   const [subModel, setSubModel] = useState('small')
+  const [subStyle, setSubStyle] = useState('cap-standard')
   const [subBusy, setSubBusy] = useState(false)
   const [subProgress, setSubProgress] = useState<TranscribeProgress | null>(null)
   const [subResult, setSubResult] = useState<TranscribeResult | null>(null)
@@ -457,11 +459,12 @@ export default function AiPanel(): JSX.Element {
       setSubResult(r)
       if (r.ok && r.tracks.length) {
         const timeOffset = pick.start - pick.sourceStart
+        // één Subtitles-track: eerste taal vervangt alles, rest append zonder nieuwe track
         r.tracks.forEach((t, i) => {
-          st.addSubtitleClips(t.language, t.segments, {
+          useEditorStore.getState().addSubtitleClips(t.language, t.segments, {
             timeOffset,
-            // eerste taal wipt de track, rest wordt toegevoegd (1 track)
-            replace: i === 0
+            replace: i === 0,
+            styleId: subStyle
           })
         })
       }
@@ -903,6 +906,35 @@ export default function AiPanel(): JSX.Element {
           {subTargets.length === 0 && (
             <div className="ai-hint" style={{ color: 'var(--danger)' }}>Kies minstens één taal</div>
           )}
+        </div>
+
+        <div className="ctl" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4 }}>
+          <label style={{ width: 'auto' }}>Caption-stijl</label>
+          <div className="cap-presets">
+            {CAPTION_PRESETS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className={`cap-preset ${subStyle === p.id ? 'active' : ''}`}
+                onClick={() => setSubStyle(p.id)}
+                title={`${p.name} · ${p.wordMode === 'karaoke' ? 'woord-timings' : p.wordMode === 'single' ? 'één woord per clip' : 'per zin'}`}
+                data-tooltip={p.name}
+                aria-pressed={subStyle === p.id}
+              >
+                <span className="cap-preset-emoji">{p.emoji}</span>
+                <span className="cap-preset-name">{p.name}</span>
+              </button>
+            ))}
+          </div>
+          <div className="ai-hint">
+            {(() => {
+              const p = CAPTION_PRESETS.find((x) => x.id === subStyle)
+              if (!p) return null
+              if (p.wordMode === 'karaoke') return 'Karaoke: hele zin blijft staan, het actieve woord licht op (whisper levert woord-timings).'
+              if (p.wordMode === 'single') return 'Woord voor woord: elk woord krijgt een eigen clip van ±0,2s.'
+              return 'Per zin: clips van max 5 seconden op de Subtitles-track.'
+            })()}
+          </div>
         </div>
 
         <div className="ctl">

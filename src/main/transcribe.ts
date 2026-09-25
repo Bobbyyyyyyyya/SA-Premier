@@ -7,6 +7,7 @@ import type {
   InstallProgress,
   SubtitleSegment,
   SubtitleTrackResult,
+  SubtitleWord,
   TranscribeProgress,
   TranscribeRequest,
   TranscribeResult,
@@ -545,22 +546,63 @@ function parseWhisperJson(raw: string): { language?: string; segments: SubtitleS
   if (start < 0 || end <= start) return { segments: [] }
   const data = JSON.parse(text.slice(start, end + 1)) as {
     language?: string
-    transcription?: Array<{ offsets?: { from?: number; to?: number }; text?: string; timestamps?: { from?: string; to?: string } }>
+    transcription?: Array<{
+      offsets?: { from?: number; to?: number }
+      text?: string
+      timestamps?: { from?: string; to?: string }
+      tokens?: Array<{ text?: string; offsets?: { from?: number; to?: number }; id?: number }>
+    }>
     segments?: Array<{ start?: number; end?: number; text?: string; offsets?: { from?: number; to?: number } }>
   }
   const segs: SubtitleSegment[] = []
   type AnySeg =
     | { start?: number; end?: number; text?: string; offsets?: { from?: number; to?: number } }
-    | { offsets?: { from?: number; to?: number }; text?: string; timestamps?: { from?: string; to?: string } }
+    | {
+        offsets?: { from?: number; to?: number }
+        text?: string
+        timestamps?: { from?: string; to?: string }
+        tokens?: Array<{ text?: string; offsets?: { from?: number; to?: number }; id?: number }>
+      }
   const list: AnySeg[] = (data.segments ?? data.transcription ?? []) as AnySeg[]
   for (const s of list) {
     const startMs = s.offsets?.from ?? ('start' in s && s.start != null ? Math.round(s.start * 1000) : undefined)
     const endMs = s.offsets?.to ?? ('end' in s && s.end != null ? Math.round(s.end * 1000) : undefined)
     const t = (s.text ?? '').trim()
     if (startMs == null || endMs == null || !t) continue
-    segs.push({ start: startMs / 1000, end: endMs / 1000, text: t })
+    const words = 'tokens' in s && Array.isArray(s.tokens) ? tokensToWords(s.tokens) : undefined
+    segs.push(words?.length ? { start: startMs / 1000, end: endMs / 1000, text: t, words } : { start: startMs / 1000, end: endMs / 1000, text: t })
   }
   return { language: data.language, segments: segs }
+}
+
+/** Whisper-tokenoffsets → woord-timings (token = stukje woord; nieuw woord begint met spatie). */
+function tokensToWords(tokens: Array<{ text?: string; offsets?: { from?: number; to?: number } }>): SubtitleWord[] {
+  const out: SubtitleWord[] = []
+  let cur = ''
+  let from: number | null = null
+  let to = 0
+  const flush = (): void => {
+    const word = cur.trim()
+    if (word && from !== null) out.push({ start: from / 1000, end: Math.max(from, to) / 1000, text: word })
+    cur = ''
+    from = null
+    to = 0
+  }
+  for (const tk of tokens) {
+    const raw = tk.text ?? ''
+    if (!raw) continue
+    if (/^\[[A-Z_]+\]$/.test(raw.trim())) continue
+    const f = tk.offsets?.from
+    const z = tk.offsets?.to
+    if (raw.startsWith(' ') && cur) flush()
+    const piece = raw.trimStart()
+    if (!piece) continue
+    if (from === null && f != null) from = f
+    if (z != null) to = z
+    cur += piece
+  }
+  flush()
+  return out
 }
 
 function parseTimestamp(s: string): number {
@@ -628,7 +670,7 @@ async function transcribeWav(
     /* ignore */
   }
 
-  const args = ['-m', model, '-f', wavPath, '-oj', '-of', jsonOut.replace(/\.json$/, '')]
+  const args = ['-m', model, '-f', wavPath, '-ojf', '-of', jsonOut.replace(/\.json$/, '')]
   if (sourceLanguage && sourceLanguage !== 'auto') args.push('-l', sourceLanguage)
   else args.push('-l', 'auto')
   // betere kwaliteit: beam search; -np = geen ruis in output (NIET -nt = no-timestamps!)
@@ -706,7 +748,8 @@ async function translateSegments(
       .map((l) => l.replace(/^\s*\d+[.)]\s*/, '').trim())
       .filter(Boolean)
     batch.forEach((s, j) => {
-      out.push({ ...s, text: lines[j] ?? s.text })
+      // vertaalde tekst heeft eigen woordgrenzen → geen bron-woordtimings meenemen
+      out.push({ start: s.start, end: s.end, text: lines[j] ?? s.text })
     })
     onProgress?.({
       phase: 'translating',
