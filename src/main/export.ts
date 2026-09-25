@@ -63,6 +63,8 @@ function fontFileForWeight(
 }
 
 let drawtextCaps: { letterSpacing: boolean } | null = null
+// ffmpeg 6 has no text_align and no letter_spacing, so we measure the text in
+// the renderer and fake the rest. Still 2 months of "why is it 3px off" left.
 function drawtextSupportsLetterSpacing(): boolean {
   if (drawtextCaps) return drawtextCaps.letterSpacing
   let ok = false

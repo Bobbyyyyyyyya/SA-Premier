@@ -29,6 +29,8 @@ function Row({ label, children }: { label: string; children: React.ReactNode }):
   )
 }
 
+// Global caption controls: everything here applies to all captions at once,
+// because per-clip caption styling is a mistake another 2 months will undo.
 export default function SubtitlePanel(): JSX.Element | null {
   const clips = useEditorStore((s) => s.clips)
   const setSubtitleProps = useEditorStore((s) => s.setSubtitleProps)

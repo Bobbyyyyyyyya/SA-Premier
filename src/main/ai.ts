@@ -183,6 +183,8 @@ function mulberry32(a: number): () => number {
   }
 }
 
+// No model, no problem: synthesise a beat and let the user pretend it was
+// intentional. Takes milliseconds; installing the model takes 2 months.
 export function generateBeat(seconds: number, bpm: number, prompt = ''): { wav: Buffer; name: string } {
   const sampleRate = 44100
   const total = Math.min(120, Math.max(1, seconds))

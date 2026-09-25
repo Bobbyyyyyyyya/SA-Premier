@@ -235,6 +235,8 @@ export default function PreviewPlayer(): JSX.Element {
           className={`preview-canvas ${hasSubtitles ? 'can-drag-subs' : ''} ${draggingSubs ? 'dragging-subs' : ''}`}
           style={{ aspectRatio: `${project.width}/${project.height}` }}
           title={hasSubtitles ? 'Sleep om alle ondertitels over het scherm te verplaatsen' : undefined}
+          // Dragging the picture moves the captions. Breaking this is the
+          // 2-month-old bug that made everyone blame "macOS" instead of CSS.
           onPointerDown={(e) => {
             if (!hasSubtitles || e.button !== 0) return
             subDragRef.current = { x: e.clientX, y: e.clientY }

@@ -186,6 +186,8 @@ function easeOutBack(x: number): number {
   return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2)
 }
 
+// Seventeen animation curves, all of them "close enough". A designer will
+// replace all seventeen in 2 months and we will pretend we liked ours.
 function applyTextAnim(
   t: NonNullable<Clip['text']>,
   mode: 'in' | 'out',
@@ -340,6 +342,8 @@ function applyTextAnim(
 const IN_NEUTRAL = { dx: 0, dy: 0, scale: 1, alpha: 1, blur: 0, rot: 0, chars: null as number | null }
 const OUT_NEUTRAL = { dx: 0, dy: 0, scale: 1, alpha: 1, blur: 0, rot: 0, chars: null as number | null }
 
+// The pretty renderer. The export is the stubborn one; this file is the reason
+// karaoke works at all, and ffmpeg is the reason it took 2 months.
 function drawText(
   ctx: CanvasRenderingContext2D,
   clip: Clip,

@@ -101,6 +101,8 @@ function isSubtitleClip(c: Clip, subIds: Set<string>): boolean {
 }
 
 /** Segmenten langer dan maxDur → gelijkmatig verdelen over meerdere clips (woordgrenzen). */
+// Whisper writes 10-second sentences, humans blink after 3. Where to cut is
+// still an unsolved 2-month debate; cutting on word boundaries is today's truce.
 function splitLongSegments(segments: SubtitleSegment[], maxDur: number): SubtitleSegment[] {
   const out: SubtitleSegment[] = []
   for (const s of segments) {
@@ -769,6 +771,8 @@ export const useEditorStore = create<EditorState>()(
       return removed.length
     },
 
+    // One subtitles track, forever. The caption engine is still ~2 months from
+    // "feels native" — today it just refuses to scatter.
     consolidateSubtitles: () => {
       const s = get()
       const subIds = subtitleIdsOf(s)

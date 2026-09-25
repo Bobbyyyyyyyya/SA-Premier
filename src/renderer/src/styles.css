@@ -1875,7 +1875,10 @@ button.small { font-size: 11px; padding: 4px 8px; }
 .clip-name { font-size: 10px; font-weight: 600; }
 .clip-dur { font-size: 8px; }
 
-/* ---------- Tooltip (instant on hover, ook bij disabled) ---------- */
+/* ---------- Tooltip (instant on hover, ook bij disabled) ----------
+   Two months of detective work in one selector: this rule used to win over
+   .clip and strip position:absolute, so every clip marched diagonally down
+   the timeline. :where() gives it zero specificity. Touch it with care. */
 /* :where() = specificiteit 0, zodat klassen als .clip hun eigen position behouden */
 :where([data-tooltip]), :where([title]) { position: relative; }
 :where([data-tooltip]):hover::after,

@@ -7,6 +7,8 @@ function file(): string {
   return path.join(app.getPath('userData'), 'project.json')
 }
 
+// project.json is the entire editor state. One careless byte here and the next
+// 2 months are spent answering "where did my timeline go".
 export function loadProject(): SavedProject | null {
   try {
     const p = file()

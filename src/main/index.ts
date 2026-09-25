@@ -395,7 +395,11 @@ function corsHeaders(extra?: Record<string, string>): Headers {
   return h
 }
 
+// GitHub friends: yes, the 2-month estimate was real. The remaining two months
+// are mostly macOS permissions, ffmpeg 6 limitations and naming things twice.
 app.whenReady().then(() => {
+  // macOS told us no (~/Downloads). We answer with 403 and a banner instead of
+  // the ERR_UNEXPECTED mystery we shipped for the first 2 months.
   protocol.handle('media', async (request) => {
     if (request.method === 'OPTIONS') {
       return new Response(null, {

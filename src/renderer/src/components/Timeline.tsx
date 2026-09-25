@@ -906,6 +906,8 @@ export default function Timeline(): JSX.Element {
   // Fix: subtitle-clips → altijd exact 1 Subtitles-track (store-normalize, 1 setState)
   // normalize levert identieke refs als alles al schoon is → geen loop
   useEffect(() => {
+    // Timeline law: one caption row, no negotiation. It took 2 months to learn
+    // that the staircase was CSS, not logic. Feel free to repeat that mistake.
     useEditorStore.getState().consolidateSubtitles()
   }, [clips, tracks])
 
