@@ -289,6 +289,24 @@ function registerIpc(): void {
   ipcMain.handle('comfy-status', () => comfy.comfyStatus())
   ipcMain.handle('comfy-models', () => comfy.listCheckpoints())
   ipcMain.handle('comfy-catalog', () => comfy.CATALOG)
+  ipcMain.handle('comfy-dir-info', () => aiSetup.comfyDirInfo())
+  ipcMain.handle('comfy-pick-dir', async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const res = await dialog.showOpenDialog(win!, {
+      title: 'Kies de ComfyUI-map',
+      message: 'De map met main.py (en liefst ook venv/). Geldt voor ComfyUI én de MusicGen-venv.',
+      properties: ['openDirectory', 'createDirectory'],
+      defaultPath: aiSetup.comfyDirInfo().dir
+    })
+    if (res.canceled || !res.filePaths[0]) return { cancelled: true, info: aiSetup.comfyDirInfo() }
+    const picked = res.filePaths[0]
+    // niet blind opslaan: een map zonder main.py is geen ComfyUI, dan zeggen we dat
+    if (!fs.existsSync(path.join(picked, 'main.py'))) {
+      return { error: `${picked} bevat geen main.py — kies de map waarin je ComfyUI staat.`, info: aiSetup.comfyDirInfo() }
+    }
+    return { info: aiSetup.setComfyDir(picked) }
+  })
+  ipcMain.handle('comfy-dir-reset', () => ({ info: aiSetup.setComfyDir(null) }))
   ipcMain.handle('comfy-start', () => comfy.ensureComfyUIAsync())
   ipcMain.handle('comfy-install', (event, id: string) => {
     const item = comfy.CATALOG.find((m) => m.id === id)

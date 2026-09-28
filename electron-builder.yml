@@ -22,6 +22,7 @@
 
 appId: com.sapremier.app
 productName: SA Premier
+# icoon: 1024px master in build/, electron-builder schaalt zelf naar alle formaten
 directories:
   output: dist
 publish:
@@ -53,8 +54,15 @@ extraResources:
     filter:
       - ffmpeg
       - ffmpeg.exe
+  # MusicGen-server. Zonder dit bestand verdwijnt de AI-muziek zodra iemand
+  # ~/ComfyUI weggooit — music-ai.ts zoekt eerst hier, oude paden zijn fallback.
+  - from: resources/ai
+    to: ai
+    filter:
+      - '**/*'
 
 mac:
+  icon: build/icon.png
   category: public.app-category.video
   # PKG = echte macOS installer-pakket (wizard: welkom → voorwaarden → locatie → installatie + AI-keuze)
   # DMG = slepen-naar-Programma's. We bieden beide; PKG is het meest "Windows .exe"-achtig.

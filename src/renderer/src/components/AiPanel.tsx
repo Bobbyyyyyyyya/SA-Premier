@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { IconBox, IconCloud, IconTool, IconMusic, IconPalette } from './icons'
 import { importPaths } from '../lib/inspect'
-import type { AiImageProgress, AiMusicProgress, CatalogModel, ComfyStatus, ComfyImageResult, InstallProgress, InstalledModel, TranscribeProgress, TranscribeResult, TranscribeStatus } from '../../../shared/types'
+import type { AiImageProgress, AiMusicProgress, CatalogModel, ComfyDirInfo, ComfyStatus, ComfyImageResult, InstallProgress, InstalledModel, TranscribeProgress, TranscribeResult, TranscribeStatus } from '../../../shared/types'
 import type { MusicStatus } from '../../../shared/types'
 import { CAPTION_PRESETS } from '../../../shared/types'
 import { useEditorStore } from '../store'
@@ -34,6 +34,8 @@ function formatMb(mb: number): string {
 
 export default function AiPanel(): JSX.Element {
   const [comfy, setComfy] = useState<ComfyStatus>({ available: false })
+  const [comfyDir, setComfyDir] = useState<ComfyDirInfo | null>(null)
+  const [pickingDir, setPickingDir] = useState(false)
   const [musicStatus, setMusicStatus] = useState<MusicStatus>({ available: false })
   const [ollama, setOllama] = useState<{ available: boolean; version?: string }>({ available: false })
   const [starting, setStarting] = useState<{ ollama?: boolean; comfy?: boolean; music?: boolean }>({})
@@ -97,14 +99,16 @@ export default function AiPanel(): JSX.Element {
 
   const refreshComfy = useCallback(async (): Promise<void> => {
     try {
-      const [st, mst, ost] = await Promise.all([
+      const [st, mst, ost, dir] = await Promise.all([
         (window.api as unknown as { comfyStatus?: () => Promise<ComfyStatus> }).comfyStatus?.() ?? Promise.resolve({ available: false } as ComfyStatus),
         (window.api as unknown as { musicStatus?: () => Promise<MusicStatus> }).musicStatus?.() ?? Promise.resolve({ available: false } as MusicStatus),
         (window.api as unknown as { aiPing?: () => Promise<{ available: boolean; version?: string }> }).aiPing?.() ?? Promise.resolve({ available: false }),
+        (window.api as unknown as { comfyDirInfo?: () => Promise<ComfyDirInfo> }).comfyDirInfo?.() ?? Promise.resolve(null)
       ])
       setComfy(st)
       setMusicStatus(mst)
       setOllama(ost)
+      if (dir) setComfyDir(dir)
     } catch {
       // ignore — voorkomt crash als preload nog oud is
     }
@@ -192,6 +196,38 @@ export default function AiPanel(): JSX.Element {
     } finally {
       setStarting((p) => ({ ...p, [which]: false }))
       void refreshComfy()
+    }
+  }
+
+  const pickComfyDir = async (): Promise<void> => {
+    setPickingDir(true)
+    try {
+      const r = await window.api.comfyPickDir()
+      if (r.info) setComfyDir(r.info)
+      if (r.error) {
+        setStartError((p) => ({ ...p, comfy: r.error }))
+      } else if (!r.cancelled && r.info) {
+        setStartError((p) => ({ ...p, comfy: undefined }))
+        // meteen proberen te starten: vaak stond de installatie hier al
+        void startOne('comfy')
+      }
+      await refreshComfy()
+    } catch (e) {
+      setStartError((p) => ({ ...p, comfy: (e as Error).message }))
+    } finally {
+      setPickingDir(false)
+    }
+  }
+
+  const resetComfyDir = async (): Promise<void> => {
+    setPickingDir(true)
+    try {
+      const r = await window.api.comfyDirReset()
+      setComfyDir(r.info)
+      setStartError((p) => ({ ...p, comfy: undefined }))
+      await refreshComfy()
+    } finally {
+      setPickingDir(false)
     }
   }
 
@@ -552,6 +588,30 @@ export default function AiPanel(): JSX.Element {
         )}
       </div>
       {startError.comfy && <div className="ai-error" style={{ padding: '4px 10px' }}>{startError.comfy}</div>}
+      <div className="ai-hint" style={{ padding: '0 10px 6px' }}>
+        <span style={{ opacity: 0.75 }}>
+          ComfyUI-map: <code>{comfyDir?.dir ?? '…'}</code>
+          {comfyDir && !comfyDir.hasMain && ' — geen main.py gevonden'}
+          {comfyDir?.hasMain && !comfyDir.hasVenv && ' — geen venv (python mist torch)'}
+        </span>{' '}
+        <button
+          onClick={() => void pickComfyDir()}
+          disabled={pickingDir}
+          title="Wijs aan waar je ComfyUI staat (bijv. op een externe schijf). Geldt ook voor de MusicGen-venv."
+          data-tooltip="Wijs aan waar je ComfyUI staat"
+        >
+          {pickingDir ? 'Bezig…' : 'Map…'}
+        </button>
+        {comfyDir?.custom && (
+          <button
+            onClick={() => void resetComfyDir()}
+            title="Terug naar de standaard ~/ComfyUI"
+            data-tooltip="Terug naar ~/ComfyUI"
+          >
+            Standaardpad
+          </button>
+        )}
+      </div>
       <div className="ai-status music-status">
         <span className={`dot ${musicStatus.available ? 'ok' : starting.music ? 'wait' : 'bad'}`} />
         <span>

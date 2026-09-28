@@ -19,3 +19,27 @@ resources/
   en toont in de wizard: “al meegeleverd ✓”.
 
 Tip: begin met 1 model (SD 1.5 pruned-emaonly). Full-installer wordt dan ~4,5 GB.
+
+## `ai/` — MusicGen-server (altijd mee)
+
+```
+resources/
+  ai/
+    music_server.py    ← HTTP-server die MusicGen aanroept (poort 8189)
+```
+
+Dit bestand wordt in **beide** builds meegepakt (`extraResources` → `<resources>/ai/`),
+ook in de kleine Lite-build: het is ~7 kB en zonder dit bestand valt AI-muziek
+stilletjes terug op de synth-fallback.
+
+`src/main/music-ai.ts` zoekt het script in deze volgorde:
+
+1. `<resources>/ai/music_server.py` — de gebouwde app
+2. `resources/ai/music_server.py` — dev/bronmap
+3. `<ComfyUI-map>/music_server.py` — installatie uit de AI-instelling
+4. `~/MusicAI/music_server.py` — oude locatie (fallback)
+
+Het script heeft Python nodig (`torch`, `transformers`, `numpy`, `aiohttp`,
+`scipy`); zonder die bibliotheken start hij niet en blijft de synth-fallback
+over. De app hoeft geen modellen mee te leveren — die downloadt MusicGen zelf
+op aanvraag.

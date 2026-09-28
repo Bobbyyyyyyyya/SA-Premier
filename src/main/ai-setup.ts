@@ -1,6 +1,8 @@
 import { app } from 'electron'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
+import type { ComfyDirInfo } from '../shared/types'
 
 export type AiSetupMode = 'ondemand' | 'full' | 'custom'
 
@@ -14,6 +16,12 @@ export interface AiSetup {
   /** heeft de user de keuze al gemaakt (wizard afgerond) */
   completed: boolean
   updatedAt: number
+  /**
+   * Eigen pad naar de ComfyUI-installatie (bijv. op een externe schijf).
+   * Leeg = standaard `~/ComfyUI`. ComfyUI én de MusicGen-venv worden hier
+   * vandaan gestart, dus één knop dekt beide engines.
+   */
+  comfyDir?: string
 }
 
 const DEFAULTS: AiSetup = {
@@ -104,7 +112,8 @@ export function getAiSetup(): AiSetup {
       music: data.music ?? DEFAULTS.music,
       ollama: data.ollama ?? DEFAULTS.ollama,
       completed: data.completed ?? false,
-      updatedAt: data.updatedAt ?? Date.now()
+      updatedAt: data.updatedAt ?? Date.now(),
+      ...(data.comfyDir ? { comfyDir: data.comfyDir } : {})
     }
   } catch {
     return { ...DEFAULTS }
@@ -142,6 +151,43 @@ export function setAiSetup(patch: Partial<AiSetup>): AiSetup {
 export function shouldAutostart(engine: 'comfy' | 'music' | 'ollama'): boolean {
   const s = getAiSetup()
   return s[engine]
+}
+
+/**
+ * Waar de ComfyUI-installatie staat. Stond eerst vast op `~/ComfyUI`, wat stuk
+ * gaat zodra iemand de installatie naar een externe schijf verplaatst — nu
+ * wijst de user het pad zelf aan (bewaard in ai-setup.json).
+ */
+export function comfyBaseDir(): string {
+  const custom = getAiSetup().comfyDir
+  if (custom && fs.existsSync(custom)) return custom
+  return path.join(os.homedir(), 'ComfyUI')
+}
+
+/** Inspectie van de ingestelde map, voor de UI. */
+export function comfyDirInfo(): ComfyDirInfo {
+  const configured = getAiSetup().comfyDir
+  const dir = configured && fs.existsSync(configured) ? configured : path.join(os.homedir(), 'ComfyUI')
+  const has = (p: string): boolean => {
+    try {
+      return fs.existsSync(p)
+    } catch {
+      return false
+    }
+  }
+  return {
+    dir,
+    exists: has(dir),
+    hasMain: has(path.join(dir, 'main.py')),
+    hasVenv: has(path.join(dir, 'venv', 'bin', 'python')) || has(path.join(dir, 'venv', 'Scripts', 'python.exe')),
+    custom: !!(configured && configured !== path.join(os.homedir(), 'ComfyUI'))
+  }
+}
+
+/** Pad opslaan (of met null wissen → terug naar `~/ComfyUI`). */
+export function setComfyDir(dir: string | null): ComfyDirInfo {
+  setAiSetup(dir ? { comfyDir: dir } : { comfyDir: '' })
+  return comfyDirInfo()
 }
 
 /**

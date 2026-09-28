@@ -873,6 +873,20 @@ export interface ComfyStatus {
   installing?: string
 }
 
+/** Waar de ComfyUI-installatie staat (standaard ~/ComfyUI, of zelf aangewezen). */
+export interface ComfyDirInfo {
+  /** pad dat de app gebruikt */
+  dir: string
+  /** bestaat die map? */
+  exists: boolean
+  /** bevat die map main.py? (anders is het geen ComfyUI) */
+  hasMain: boolean
+  /** bevat die map een venv met python? */
+  hasVenv: boolean
+  /** komt het pad uit de instelling of is het de standaard ~/ComfyUI? */
+  custom: boolean
+}
+
 export interface MusicStatus {
   available: boolean
   device?: string

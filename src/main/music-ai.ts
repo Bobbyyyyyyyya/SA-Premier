@@ -1,25 +1,64 @@
 import { spawn, ChildProcess, execSync } from 'node:child_process'
+import { app } from 'electron'
 import fs from 'node:fs'
 import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import type { CatalogModel, InstallProgress, InstalledModel } from '../shared/types'
+import { comfyBaseDir } from './ai-setup'
+import { pythonDepsOk, venvPython } from './py-deps'
 
 const PORT = 8189
 const BASE = `http://127.0.0.1:${PORT}`
-const comfyDir = path.join(os.homedir(), 'ComfyUI')
+/** Zelfde map als ComfyUI (standaard ~/ComfyUI, of wat de user heeft aangewezen). */
+function comfyDir(): string {
+  return comfyBaseDir()
+}
 let server: ChildProcess | null = null
 /** Single-flight: voorkomt dubbele start + kill-race (exit null). */
 let starting: Promise<{ available: boolean; started?: boolean; error?: string }> | null = null
 
+/**
+ * Waar het MusicGen-script staat. Vroeger stond het alleen in `~/ComfyUI`, wat
+ * betekende dat de functie stilletjes verdween zodra die map weg was. Nu levert
+ * de app het zelf mee (`resources/ai/music_server.py` → `<resources>/ai/` in de
+ * gebouwde app) en blijven de oude locaties als fallback bestaan.
+ */
+function scriptCandidates(): string[] {
+  const out: string[] = []
+  const res = (process as unknown as { resourcesPath?: string }).resourcesPath
+  if (res) out.push(path.join(res, 'ai', 'music_server.py'))
+  out.push(path.join(process.cwd(), 'resources', 'ai', 'music_server.py'))
+  out.push(path.join(app.getAppPath(), 'resources', 'ai', 'music_server.py'))
+  out.push(path.join(comfyDir(), 'music_server.py'))
+  out.push(path.join(os.homedir(), 'MusicAI', 'music_server.py'))
+  return out
+}
+
+function findServerScript(): string | null {
+  for (const p of scriptCandidates()) {
+    try {
+      if (fs.existsSync(p)) return p
+    } catch {
+      // ignore
+    }
+  }
+  return null
+}
+
 function pythonBin(): string {
-  const cands = [
-    path.join(comfyDir, 'venv', 'bin', 'python'),
-    path.join(comfyDir, 'venv', 'Scripts', 'python.exe'),
-    path.join(os.homedir(), 'MusicAI', 'venv', 'bin', 'python'),
-  ]
-  for (const c of cands) if (fs.existsSync(c)) return c
-  return 'python'
+  // venv naast het gevonden script eerst (ComfyUI-map incl. venv), dan de oude paden
+  const entry = findServerScript()
+  const near: string[] = entry
+    ? [
+        path.join(path.dirname(entry), 'venv', 'bin', 'python'),
+        path.join(path.dirname(entry), 'venv', 'Scripts', 'python.exe')
+      ]
+    : []
+  for (const c of near) {
+    if (fs.existsSync(c)) return c
+  }
+  return venvPython(comfyDir()) ?? venvPython(path.join(os.homedir(), 'MusicAI')) ?? 'python'
 }
 
 function killZombieOnPort(port: number): void {
@@ -78,13 +117,24 @@ async function doEnsureMusicAIAsync(waitMs: number): Promise<{ available: boolea
   killZombieOnPort(PORT)
   await new Promise((r) => setTimeout(r, 500))
 
-  const serverPy = path.join(comfyDir, 'music_server.py')
-  const altPy = path.join(os.homedir(), 'MusicAI', 'music_server.py')
-  const entry = fs.existsSync(serverPy) ? serverPy : fs.existsSync(altPy) ? altPy : null
+  const entry = findServerScript()
   if (!entry) {
-    return { available: false, error: `music_server.py niet gevonden in ${comfyDir}. Plaats music_server.py daar om echte AI-muziek te gebruiken (synth blijft werken).` }
+    return {
+      available: false,
+      error:
+        'MusicGen-script niet gevonden. Het hoort bij de app te zitten (resources/ai/music_server.py) — ' +
+        'herinstalleer de app, of zet music_server.py in ~/ComfyUI. Zonder dit blijft de synth-fallback werken.'
+    }
   }
   const bin = pythonBin()
+  if (!(await pythonDepsOk(bin, 'import torch, transformers, numpy, aiohttp, scipy'))) {
+    return {
+      available: false,
+      error:
+        `MusicGen kan niet starten: ${bin} mist torch/transformers (of die venv is kapot). ` +
+        'Installeer die in een venv naast music_server.py; de synth-fallback blijft intussen gewoon werken.'
+    }
+  }
   try {
     console.log('[music] starting server:', bin, entry)
     if (server) {

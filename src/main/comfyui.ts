@@ -11,10 +11,15 @@ import type {
   InstallProgress,
   InstalledModel
 } from '../shared/types'
+import { comfyBaseDir } from './ai-setup'
+import { pythonDepsOk, venvPython } from './py-deps'
 
 const PORT = 8188
 const BASE = `http://127.0.0.1:${PORT}`
-const comfyDir = path.join(os.homedir(), 'ComfyUI')
+/** Installatiepad: standaard ~/ComfyUI, overschrijfbaar via AI-paneel ("Map…"). */
+function comfyDir(): string {
+  return comfyBaseDir()
+}
 
 let server: ChildProcess | null = null
 let installs = new Map<string, InstallProgress>()
@@ -22,12 +27,7 @@ let installs = new Map<string, InstallProgress>()
 let starting: Promise<{ available: boolean; started?: boolean; error?: string }> | null = null
 
 function pythonBin(): string {
-  const candidates = [
-    path.join(comfyDir, 'venv', 'bin', 'python'),
-    path.join(comfyDir, 'venv', 'Scripts', 'python.exe')
-  ]
-  for (const c of candidates) if (fs.existsSync(c)) return c
-  return 'python'
+  return venvPython(comfyDir()) ?? 'python'
 }
 
 function killZombieOnPort(port: number): void {
@@ -44,7 +44,7 @@ async function comfyFetch(pathname: string, init?: RequestInit): Promise<Respons
 }
 
 function installedDir(): string {
-  return path.join(comfyDir, 'models', 'checkpoints')
+  return path.join(comfyDir(), 'models', 'checkpoints')
 }
 
 /** Meegeleverde checkpoints (Full-build) — worden samengevoegd met gedownloade. */
@@ -121,13 +121,32 @@ async function doEnsureComfyUIAsync(waitMs: number): Promise<{ available: boolea
   killZombieOnPort(PORT)
   await new Promise((r) => setTimeout(r, 500))
 
-  if (!fs.existsSync(comfyDir)) {
-    return { available: false, error: `ComfyUI niet gevonden in ${comfyDir}. Installeer ComfyUI of zet het daar neer.` }
+  const dir = comfyDir()
+  if (!fs.existsSync(dir)) {
+    return {
+      available: false,
+      error:
+        `ComfyUI niet gevonden in ${dir}. Installeer ComfyUI daar, of wijs het pad zelf aan ` +
+        'met "Map…" hierboven (handig bij een installatie op een externe schijf).'
+    }
+  }
+  if (!fs.existsSync(path.join(dir, 'main.py'))) {
+    return { available: false, error: `${dir} bevat geen main.py — dit is geen ComfyUI-map. Kies de juiste map met "Map…".` }
   }
   const bin = pythonBin()
   try {
     if (!fs.existsSync(bin) && bin !== 'python' && bin !== 'python3') {
-      return { available: false, error: `Python venv niet gevonden (${bin}). Maak ~/ComfyUI/venv aan.` }
+      return { available: false, error: `Python venv niet gevonden (${bin}). Maak ${dir}/venv aan.` }
+    }
+    // snelle check: een kapotte venv (ontbrekende torch-dylibs) zou anders
+    // minutenlang op een timeout wachten in plaats van meteen te zeggen wat er mist
+    if (!(await pythonDepsOk(bin, 'import torch, aiohttp, safetensors'))) {
+      return {
+        available: false,
+        error:
+          `ComfyUI kan niet starten: ${bin} mist torch/aiohttp (of die venv is kapot). ` +
+          'Herinstalleer torch in die venv; daarna werkt AI-foto-AI weer.'
+      }
     }
     console.log('[comfy] starting server:', bin)
     if (server) {
@@ -138,7 +157,7 @@ async function doEnsureComfyUIAsync(waitMs: number): Promise<{ available: boolea
     const logFd = fs.openSync(logPath, 'a')
     fs.writeSync(logFd, `\n--- start ${new Date().toISOString()} ---\n`)
     server = spawn(bin, ['main.py', '--port', String(PORT), '--preview-method', 'none'], {
-      cwd: comfyDir,
+      cwd: dir,
       stdio: ['ignore', logFd, logFd],
       detached: true,
       env: { ...process.env, TQDM_DISABLE: '1', PYTHONUNBUFFERED: '1' }
