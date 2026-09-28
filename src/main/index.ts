@@ -210,7 +210,11 @@ function registerIpc(): void {
     if (st.available) {
       report(1, `Model laden: ${mid.split('/').pop()}… (eerste keer duurt het langst)`)
       try {
-        const r = await musicAi.generateMusic(p || 'a happy trap beat', seconds, mid)
+        const r = await musicAi.generateMusic(p || 'a happy trap beat', seconds, mid, (prog) => {
+          if (prog.phase === 'error') return
+          const suffix = prog.step && prog.total ? ` (${prog.step}/${prog.total})` : ''
+          report(prog.percent, `${prog.message || 'Genereren…'}${suffix}`)
+        })
         if (r.ok && r.base64) {
           const result = { ok: true, name: `ai-${mid.split('/').pop()}-${seconds}s.wav`, base64: r.base64 }
           if (!event.sender.isDestroyed()) event.sender.send('music-progress', { phase: 'done', percent: 100, result })

@@ -1,5 +1,6 @@
 import { spawn, ChildProcess, execSync } from 'node:child_process'
 import fs from 'node:fs'
+import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import type { CatalogModel, InstallProgress, InstalledModel } from '../shared/types'
@@ -134,19 +135,87 @@ export function killOrphanServers(): void {
   } catch {}
 }
 
-export async function generateMusic(prompt: string, seconds: number, modelId: string): Promise<{ ok: boolean; base64?: string; error?: string }> {
+export interface MusicGenProgress {
+  percent: number
+  phase: string
+  message?: string
+  step?: number
+  total?: number
+}
+
+export async function generateMusic(
+  prompt: string,
+  seconds: number,
+  modelId: string,
+  onProgress?: (p: MusicGenProgress) => void
+): Promise<{ ok: boolean; base64?: string; error?: string }> {
+  let stopped = false
+  let lastPct = -1
+  // echte voortgang van de python-server pollen (/progress) zodat de balk niet op 10% blijft hangen
+  const poll = async (): Promise<void> => {
+    while (!stopped) {
+      await sleep(400)
+      if (stopped) return
+      try {
+        // http.get i.p.v. fetch: undici's fetch kan op macOS EINVAL gooien bij veel polling
+        const p = await pollProgress()
+        if (!p) continue
+        if (p.phase === 'error') {
+          onProgress?.({ percent: 0, phase: 'error', message: p.message })
+          continue
+        }
+        if (p.percent > lastPct) {
+          lastPct = p.percent
+          onProgress?.(p)
+        }
+      } catch {
+        /* server even niet bereikbaar: laatste stand vasthouden */
+      }
+    }
+  }
+  void poll()
   try {
     const r = await fetch(`${BASE}/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt, duration: seconds, model: modelId }),
-      signal: AbortSignal.timeout(120000) // 2 min timeout for model loading
+      signal: AbortSignal.timeout(600000) // model laden + genereren kan even duren
     })
     const j = await r.json() as { ok: boolean; base64?: string; error?: string }
+    stopped = true
     if (!r.ok || !j.ok) return { ok: false, error: j.error || `HTTP ${r.status}` }
+    onProgress?.({ percent: 100, phase: 'done', message: 'Klaar' })
     return { ok: true, base64: j.base64 }
-  } catch (e) { return { ok: false, error: (e as Error).message } }
+  } catch (e) {
+    stopped = true
+    return { ok: false, error: (e as Error).message }
+  }
 }
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+
+function pollProgress(): Promise<MusicGenProgress | null> {
+  return new Promise((resolve) => {
+    const req = http.get(`${BASE}/progress`, { agent: false, timeout: 2500 }, (res) => {
+      let body = ''
+      res.setEncoding('utf8')
+      res.on('data', (c) => (body += c))
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(body) as MusicGenProgress)
+        } catch {
+          resolve(null)
+        }
+      })
+    })
+    req.on('error', () => resolve(null))
+    req.on('timeout', () => {
+      req.destroy()
+      resolve(null)
+    })
+  })
+}
+
 
 export const MUSIC_CATALOG: CatalogModel[] = [
   { id: 'facebook/musicgen-small', name: 'MusicGen Small (AI)', description: 'AI 300M — fastest, lowest quality. Use only for quick previews. 1.2GB.', url: 'https://huggingface.co/facebook/musicgen-small', sizeMb: 1200, file: 'facebook/musicgen-small', requires: '1.2GB · fast · low quality' },
