@@ -764,6 +764,11 @@ export interface Clip {
   text?: TextData
   /** Expliciete marker: clip is AI-ondertitel (blijft altijd op de Subtitles-track). */
   subtitle?: boolean
+  /**
+   * Asset-id van de VIDEOCLIP waar dit audio-clip uit gehaald is. Zo weet de
+   * preview/export dat de video zelf al stil moet zijn — anders dubbel geluid.
+   */
+  extractedFromAssetId?: string
 }
 
 export interface Project {
@@ -811,6 +816,27 @@ export const DEFAULT_EFFECTS: ClipEffects = {
 }
 
 export const uid = (): string => 'x' + Math.random().toString(36).slice(2, 10)
+
+/**
+ * Speelt er al een eigen audio-clip onder deze videoclip? Dan moet de video
+ * zelf stil, anders hoor je alles twee keer (in preview én in de export).
+ * Matcht op `assetId` (companion-clip uit de import) óf op
+ * `extractedFromAssetId` (echt geëxtraheerd bestand) en op tijdelijke overlap,
+ * zodat een ingekorte videoclip met een langere audio-clip ook stil is.
+ */
+export function hasSeparateAudioClip(clip: Clip, clips: Clip[]): boolean {
+  if (clip.kind !== 'video') return false
+  const from = clip.start + 0.01
+  const to = clip.start + Math.max(clip.duration, 0.01) - 0.01
+  if (to <= from) return false
+  return clips.some((c) => {
+    if (c.kind !== 'audio') return false
+    if (c.assetId !== clip.assetId && c.extractedFromAssetId !== clip.assetId) return false
+    const cFrom = c.start
+    const cTo = c.start + Math.max(c.duration, 0.01)
+    return cFrom < to && cTo > from
+  })
+}
 
 export interface OllamaModelInfo {
   name: string

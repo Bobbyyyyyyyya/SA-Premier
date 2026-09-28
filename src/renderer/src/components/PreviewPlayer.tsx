@@ -3,6 +3,7 @@ import { useEditorStore, selectTotal } from '../store'
 import { renderFrame, clipAudioGain } from '../lib/compositor'
 import { PlayerManager } from '../lib/player'
 import { formatTime } from '../lib/format'
+import { hasSeparateAudioClip } from '../../../shared/types'
 import { IconMute, IconVolume, IconVolumeLow } from './icons'
 
 export default function PreviewPlayer(): JSX.Element {
@@ -103,12 +104,7 @@ export default function PreviewPlayer(): JSX.Element {
         }
         players.element(clip.id, asset, clip.kind)
         let muted = track?.muted ?? false
-        if (clip.kind === 'video' && asset?.hasAudio) {
-          const hasSeparateAudio = state.clips.some(
-            (c) => c.kind === 'audio' && c.assetId === clip.assetId && Math.abs(c.start - clip.start) < 0.01
-          )
-          if (hasSeparateAudio) muted = true
-        }
+        if (clip.kind === 'video' && asset?.hasAudio && hasSeparateAudioClip(clip, state.clips)) muted = true
         players.syncPlayback(
           clip.id,
           clip.kind as 'video' | 'audio',

@@ -44,6 +44,8 @@ const PRESETS: Array<{ cat: string; name: string; fx: Partial<ClipEffects> }> = 
 export default function MediaPanel(): JSX.Element {
   const [tab, setTab] = useState<'media' | 'effects' | 'ai'>('media')
   const [importing, setImporting] = useState(false)
+  const [extractingId, setExtractingId] = useState<string | null>(null)
+  const [extractMsg, setExtractMsg] = useState<{ id: string; msg: string } | null>(null)
   const assets = useEditorStore((s) => s.assets)
   const playhead = useEditorStore((s) => s.playhead)
   const addClip = useEditorStore((s) => s.addClip)
@@ -73,6 +75,24 @@ export default function MediaPanel(): JSX.Element {
   const applyPreset = (fx: Partial<ClipEffects>): void => {
     if (!selectedClipId) return
     updateClip(selectedClipId, { effects: { ...DEFAULT_EFFECTS, ...fx } })
+  }
+
+  const extractToTrack = async (assetId: string): Promise<void> => {
+    setExtractingId(assetId)
+    setExtractMsg(null)
+    let msg: string
+    try {
+      const r = await useEditorStore.getState().extractAudioToTrack(assetId)
+      msg = !r.ok
+        ? r.error ?? 'Audio extraheren mislukt'
+        : r.alreadyExisted
+          ? 'Audio stond al op de audiotrack'
+          : 'Audio geëxtraheerd → audiotrack ✓'
+    } catch (e) {
+      msg = `Mislukt: ${(e as Error).message}`
+    }
+    setExtractMsg({ id: assetId, msg })
+    setExtractingId(null)
   }
 
   return (
@@ -137,19 +157,14 @@ export default function MediaPanel(): JSX.Element {
                     <div className="btn-row" style={{ marginTop: 4 }}>
                       <button
                         style={{ fontSize: 10, padding: '2px 7px' }}
-                        title="Zet audio van deze video als clip op de audiotrack (op playhead)"
+                        disabled={extractingId === a.id}
+                        title="Haal de audiotrack uit deze video en zet die als clip op de audiotrack"
                         onClick={(e) => {
                           e.stopPropagation()
-                          const s = useEditorStore.getState()
-                          let audioTrack = s.tracks.find((x) => x.kind === 'audio')
-                          if (!audioTrack) {
-                            s.addTrack('audio')
-                            audioTrack = useEditorStore.getState().tracks.find((x) => x.kind === 'audio')
-                          }
-                          if (audioTrack) s.addClip(a.id, audioTrack.id, s.playhead)
+                          void extractToTrack(a.id)
                         }}
-                       data-tooltip="Zet audio van deze video als clip op de audiotrack (op playhead)">
-                        ⤷ audio → track
+                       data-tooltip="Haal de audiotrack uit deze video en zet die als clip op de audiotrack">
+                        {extractingId === a.id ? 'Bezig…' : '⤷ audio → track'}
                       </button>
                       <button
                         style={{ fontSize: 10, padding: '2px 7px' }}
@@ -164,6 +179,7 @@ export default function MediaPanel(): JSX.Element {
                       </button>
                     </div>
                   )}
+                  {extractMsg?.id === a.id && <div className="ai-hint" style={{ fontSize: 10 }}>{extractMsg.msg}</div>}
                 </div>
                 <button className="remove" onClick={() => removeAsset(a.id)} title="Remove" data-tooltip="Remove">
                   x

@@ -12,8 +12,7 @@ import {
   FONT_LIST,
   OVERLAP_TRANSITIONS,
   TEXT_PRESETS,
-  VIDEO_TRANSITIONS,
-  uid
+  VIDEO_TRANSITIONS
 } from '../../../shared/types'
 
 function toHex(color: string | undefined | null): string {
@@ -180,39 +179,24 @@ export default function Inspector(): JSX.Element {
     }
   }
 
-  const extractAudioClip = (): void => {
+  const extractAudioClip = async (): Promise<void> => {
     if (!clip || !asset || !hasAudio) return
-    const s = useEditorStore.getState()
-    let audioTrack = s.tracks.find((t) => t.kind === 'audio')
-    if (!audioTrack) {
-      s.addTrack('audio')
-      audioTrack = useEditorStore.getState().tracks.find((t) => t.kind === 'audio')
+    setExtracting(true)
+    setExtractMsg('Audio extraheren…')
+    try {
+      const r = await useEditorStore.getState().extractAudioToTrack(asset.id, clip.kind === 'video' ? clip.id : undefined)
+      if (!r.ok) {
+        setExtractMsg(r.error ?? 'Mislukt')
+      } else if (r.alreadyExisted) {
+        setExtractMsg('Audio stond al op de audiotrack ✓')
+      } else {
+        setExtractMsg('Audio geëxtraheerd en op de audiotrack gezet ✓')
+      }
+    } catch (e) {
+      setExtractMsg(`Mislukt: ${(e as Error).message}`)
+    } finally {
+      setExtracting(false)
     }
-    if (!audioTrack) return
-    // voorkom dubbele extractie op exact dezelfde plek
-    const exists = s.clips.some(
-      (c) => c.kind === 'audio' && c.assetId === clip.assetId && Math.abs(c.start - clip.start) < 0.01
-    )
-    if (exists) {
-      setExtractMsg('Audio staat al op de audiotrack.')
-      return
-    }
-    const audioClip = {
-      id: uid(),
-      assetId: asset.id,
-      assetPath: asset.path,
-      trackId: audioTrack.id,
-      start: clip.start,
-      duration: clip.duration,
-      sourceStart: clip.sourceStart,
-      volume: clip.volume,
-      effects: { ...DEFAULT_EFFECTS },
-      transitionIn: null as null,
-      transitionOut: null as null,
-      kind: 'audio' as const
-    }
-    useEditorStore.setState((st) => ({ clips: [...st.clips, audioClip], selectedClipId: audioClip.id }))
-    setExtractMsg('Audio geëxtraheerd naar audiotrack ✓')
   }
 
   const saveAudioFile = async (): Promise<void> => {
@@ -658,8 +642,8 @@ export default function Inspector(): JSX.Element {
             <h4>Audio</h4>
             <div className="btn-row">
               {clip.kind === 'video' && (
-                <button onClick={extractAudioClip} title="Zet het geluid van deze video als aparte audio-clip op de audiotrack" data-tooltip="Zet het geluid van deze video als aparte audio-clip op de audiotrack">
-                  ⤷ Extract audio naar track
+                <button onClick={() => void extractAudioClip()} disabled={extracting} title="Haal de audiotrack uit deze video en zet die als clip op de audiotrack" data-tooltip="Haal de audiotrack uit deze video en zet die als clip op de audiotrack">
+                  {extracting ? 'Bezig…' : '⤷ Extract audio naar track'}
                 </button>
               )}
               <button onClick={saveAudioFile} disabled={extracting} title="Sla alleen het geluid op als WAV/MP3-bestand" data-tooltip="Sla alleen het geluid op als WAV/MP3-bestand">
@@ -688,7 +672,7 @@ export default function Inspector(): JSX.Element {
             </div>
             {subMsg && <div className="ai-hint">{subMsg}</div>}
             {extractMsg && <div className="ai-hint">{extractMsg}</div>}
-            <div className="ai-hint">Tip: video met aparte audio-clip → video-audio wordt auto-gemute in preview om dubbel geluid te voorkomen.</div>
+            <div className="ai-hint">Tip: na extractie staat het geluid op de audiotrack en wordt de video zelf stil — anders dubbel geluid.</div>
           </div>
         )}
 

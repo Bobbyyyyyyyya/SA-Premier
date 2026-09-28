@@ -9,6 +9,7 @@ import * as comfy from './comfyui'
 import * as musicAi from './music-ai'
 import * as transcribe from './transcribe'
 import * as project from './project'
+import * as probe from './probe'
 import * as aiSetup from './ai-setup'
 import { addRecent, clearRecents, loadRecents } from './recents'
 import type { ExportRequest, RecentMediaItem, SavedProject } from '../shared/types'
@@ -186,6 +187,12 @@ function registerIpc(): void {
     })
   )
 
+  ipcMain.handle('media-probe', (_e, p: string) => probe.probeMedia(p))
+
+  ipcMain.handle('audio-peaks', (_e, p: string, opts?: { start?: number; duration?: number }) =>
+    probe.audioPeaks(p, opts)
+  )
+
   ipcMain.handle('ai-ping', () => ai.pingOllama())
   ipcMain.handle('ai-start', () => ai.ensureOllama())
   ipcMain.handle('ai-models', () => ai.listModels())
@@ -196,8 +203,14 @@ function registerIpc(): void {
     if (!event.sender.isDestroyed()) event.sender.send('music-progress', { phase: 'generating', percent: 0 })
     // Probeer echte AI, maar val altijd terug op synth zodat beat nooit faalt (user: "werkt niet")
     const st = await musicAi.musicStatus()
+    // echte voortgang uit de python-server (stap-per-stap, niet meer 10% → 100%)
+    const report = (percent: number, message: string): void => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('music-progress', { phase: 'generating', percent: Math.max(0, Math.min(100, percent)), message })
+      }
+    }
     if (st.available) {
-      if (!event.sender.isDestroyed()) event.sender.send('music-progress', { phase: 'generating', percent: 10, message: 'Loading AI model (first run takes ~30s)...' })
+      report(1, `Model laden: ${mid.split('/').pop()}… (eerste keer duurt het langst)`)
       try {
         const r = await musicAi.generateMusic(p || 'a happy trap beat', seconds, mid)
         if (r.ok && r.base64) {
@@ -206,12 +219,12 @@ function registerIpc(): void {
           return result
         }
         // AI faalde — fallback naar synth i.p.v. error
-        if (!event.sender.isDestroyed()) event.sender.send('music-progress', { phase: 'generating', percent: 40, message: `AI failed (${r.error || 'onbekend'}), fallback naar synth...` })
+        report(40, `AI failed (${r.error || 'onbekend'}), fallback naar synth...`)
       } catch (e) {
-        if (!event.sender.isDestroyed()) event.sender.send('music-progress', { phase: 'generating', percent: 40, message: `AI error, fallback naar synth...` })
+        report(40, 'AI error, fallback naar synth...')
       }
     } else {
-      if (!event.sender.isDestroyed()) event.sender.send('music-progress', { phase: 'generating', percent: 30, message: 'MusicGen offline, using synth...' })
+      report(1, 'MusicGen offline, synth generator...')
     }
     try {
       const { wav, name } = ai.generateBeat(seconds, bpm, p)
@@ -338,6 +351,26 @@ function registerIpc(): void {
     try {
       const r = await extractAudioToFile(inPath, res.filePath, opts)
       return { ok: true, outPath: r.outPath }
+    } catch (err) {
+      return { ok: false, error: (err as Error).message }
+    }
+  })
+
+  ipcMain.handle('extract-audio-auto', async (_e, inPath: string, opts?: { start?: number; duration?: number; name?: string }) => {
+    try {
+      const dir = path.join(app.getPath('userData'), 'audio')
+      fs.mkdirSync(dir, { recursive: true })
+      const base =
+        String(opts?.name ?? 'audio')
+          .replace(/[^a-z0-9 _-]/gi, '')
+          .trim()
+          .replace(/\s+/g, '-')
+          .slice(0, 48) || 'audio'
+      // m4a/AAC: klein genoeg om bij elk project te bewaren, en de video-clip
+      // blijft de enige bron van beeld zodat de timeline niet dubbel ffmpt.
+      const outPath = path.join(dir, `${base}-${Date.now().toString(36)}.m4a`)
+      const r = await extractAudioToFile(inPath, outPath, { start: opts?.start, duration: opts?.duration })
+      return { ok: true, outPath: r.outPath, name: path.basename(r.outPath) }
     } catch (err) {
       return { ok: false, error: (err as Error).message }
     }

@@ -233,7 +233,21 @@ function Waveform({ assetPath, seed, duration, sourceStart, pps, muted }: { asse
           finish(out.map((v) => 0.25 + ((v - min) / range) * 0.75))
         })
       })
-      .catch(() => finish(fallbackPeaks()))
+      .catch(() => {
+        // Chromium kan geen AAC/M4A of MP4 decoderen → echte pieken uit ffmmpeg
+        // ophalen, anders toont elk geëxtraheerd clipje een verzonnen golf.
+        if (cancelled) return
+        void window.api
+          .audioPeaks(assetPath, { start: sourceStart, duration })
+          .then((peaks) => {
+            if (cancelled) return
+            if (peaks && peaks.length) finish(peaks)
+            else finish(fallbackPeaks())
+          })
+          .catch(() => {
+            if (!cancelled) finish(fallbackPeaks())
+          })
+      })
 
     return () => { cancelled = true }
   }, [assetPath, seed, duration, sourceStart])

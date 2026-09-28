@@ -84,6 +84,20 @@ const api = {
   musicStart: (): Promise<{ available: boolean; started?: boolean; error?: string }> => ipcRenderer.invoke('music-start'),
   extractAudio: (inPath: string, opts?: { start?: number; duration?: number; name?: string }): Promise<{ ok?: boolean; outPath?: string; cancelled?: boolean; error?: string }> =>
     ipcRenderer.invoke('extract-audio', inPath, opts),
+  extractAudioAuto: (inPath: string, opts?: { start?: number; duration?: number; name?: string }): Promise<{ ok?: boolean; outPath?: string; name?: string; error?: string }> =>
+    ipcRenderer.invoke('extract-audio-auto', inPath, opts),
+  probeMedia: (p: string): Promise<{
+    ok: boolean
+    duration: number | null
+    hasAudio: boolean
+    hasVideo: boolean
+    width: number | null
+    height: number | null
+    audioCodec: string | null
+    videoCodec: string | null
+  }> => ipcRenderer.invoke('media-probe', p),
+  audioPeaks: (p: string, opts?: { start?: number; duration?: number }): Promise<number[] | null> =>
+    ipcRenderer.invoke('audio-peaks', p, opts),
   musicGenerate: (prompt: string, seconds: number, modelId: string): Promise<{ ok: boolean; base64?: string; error?: string }> => ipcRenderer.invoke('music-generate', prompt, seconds, modelId),
   onMusicInstallProgress: (cb: (p: InstallProgress) => void): (() => void) => {
     const listener = (_e: Electron.IpcRendererEvent, p: InstallProgress): void => cb(p)

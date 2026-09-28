@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import type { WebContents } from 'electron'
 import type { Clip, ClipEffects, ExportProgress, ExportRequest, ExportStartResult } from '../shared/types'
-import { sanitizeCaptionText } from '../shared/types'
+import { hasSeparateAudioClip, sanitizeCaptionText } from '../shared/types'
 
 const FALLBACK_FONT = '/System/Library/Fonts/Supplemental/Arial.ttf'
 function resolveFontFile(preferred?: string): string {
@@ -192,9 +192,8 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
     }
 
     if (asset.hasAudio) {
-      // voorkom dubbel geluid: video met hasAudio + aparte audio-clip op zelfde tijd → alleen audio-clip telt (preview mute-logica)
-      const hasSeparate = c.kind === 'video' && clips.some((o) => o.kind === 'audio' && o.assetId === c.assetId && Math.abs(o.start - c.start) < 0.02 && Math.abs(o.duration - c.duration) < 0.05)
-      if (hasSeparate) {
+      // voorkom dubbel geluid: video met eigen audio-clip die overlapt → alleen die telt
+      if (hasSeparateAudioClip(c, clips)) {
         // skip: audio komt via de aparte audio-clip
       } else {
         const al = 'a' + c.id

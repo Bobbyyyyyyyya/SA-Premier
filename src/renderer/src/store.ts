@@ -38,6 +38,8 @@ export interface EditorState {
   setProjectName: (name: string) => void
 
   addClip: (assetId: string, trackId: string, start: number) => void
+  /** Haalt echt de audiotrack uit een video en zet die als clip op een audiotrack. */
+  extractAudioToTrack: (assetId: string, sourceClipId?: string) => Promise<ExtractAudioResult>
   addTextClip: (trackId: string, start: number, text: Partial<TextData>) => void
   /** Batch ondertitels op de gedeelde Subtitles-track — eerste call wipt, rest append. */
   addSubtitleClips: (
@@ -77,6 +79,17 @@ export interface EditorState {
 }
 
 const makeTrack = (id: string, name: string, kind: TrackKind): Track => ({ id, name, kind, muted: false, hidden: false })
+
+/** Uitkomst van een echte audio-extractie, zodat UI een echte fout kan tonen. */
+export interface ExtractAudioResult {
+  ok: boolean
+  clipId?: string
+  assetId?: string
+  outPath?: string
+  trackId?: string
+  alreadyExisted?: boolean
+  error?: string
+}
 
 const initialTracks = (): Track[] => [makeTrack('v1', 'Video 1', 'video'), makeTrack('a1', 'Audio 1', 'audio')]
 
@@ -490,6 +503,105 @@ export const useEditorStore = create<EditorState>()(
         clips: [...s.clips, clip],
         selectedClipId: clip.id
       }))
+    },
+
+    /**
+     * Echte extractie: ffmpeg haalt de audiotrack uit de video naar een m4a in
+     * de projectmap, dat bestand wordt een nieuw asset en de clip landt
+     * uitgelijnd onder de videoclip op een audiotrack. De `extractedFromAssetId`
+     * zorgt dat de video zelf voortaan stil is (geen dubbel geluid).
+     */
+    extractAudioToTrack: async (assetId, sourceClipId) => {
+      const s = get()
+      const asset = s.assets.find((a) => a.id === assetId)
+      if (!asset) return { ok: false, error: 'Media niet gevonden in de bibliotheek.' }
+      if (asset.type === 'audio') return { ok: false, error: 'Dit is al een audiobestand.' }
+      if (!asset.hasAudio) return { ok: false, error: 'Deze video bevat geen audiotrack.' }
+
+      const source = sourceClipId
+        ? s.clips.find((c) => c.id === sourceClipId)
+        : s.clips.find((c) => c.assetId === assetId && c.kind === 'video')
+      const start = source ? Math.max(0, source.start) : Math.max(0, s.playhead)
+      const sourceStart = source?.sourceStart ?? 0
+      const duration = source && source.duration > 0 ? source.duration : asset.duration > 0 ? asset.duration : 0
+      const sameSpot = (c: Clip): boolean => Math.abs(c.start - start) < 0.02
+
+      // Klaar? Dan moet de clip naar een ECHT bestand wijzen (assetId != video).
+      // De companion-clip uit de import wijst nog naar de video zelf en telt dus niet mee.
+      const done = s.clips.find(
+        (c) => c.kind === 'audio' && c.extractedFromAssetId === assetId && c.assetId !== assetId && sameSpot(c)
+      )
+      if (done) {
+        set({ selectedClipId: done.id })
+        return { ok: true, alreadyExisted: true, clipId: done.id, assetId: done.assetId, trackId: done.trackId }
+      }
+
+      let r: { ok?: boolean; outPath?: string; name?: string; error?: string }
+      try {
+        r = await window.api.extractAudioAuto(asset.path, {
+          start: sourceStart,
+          duration: duration > 0 ? duration : undefined,
+          name: asset.name.replace(/\.[a-z0-9]+$/i, '')
+        })
+      } catch (err) {
+        return { ok: false, error: (err as Error).message }
+      }
+      if (!r.ok || !r.outPath) return { ok: false, error: r.error ?? 'Audio extraheren mislukt.' }
+
+      const newAsset: Asset = {
+        id: uid(),
+        name: r.name ?? `${asset.name}.m4a`,
+        path: r.outPath,
+        type: 'audio',
+        duration: duration > 0 ? duration : asset.duration,
+        hasAudio: true
+      }
+
+      // Companion-clip van de import (dezelfde video als bron) vervangen in plaats
+      // van er een tweede bij te zetten — anders twee clips met hetzelfde geluid.
+      const companion = s.clips.find((c) => c.kind === 'audio' && c.assetId === assetId && sameSpot(c))
+      let trackId = companion?.trackId
+      if (!trackId || !s.tracks.some((t) => t.id === trackId && t.kind === 'audio')) {
+        let track = get().tracks.find((t) => t.kind === 'audio')
+        if (!track) {
+          get().addTrack('audio')
+          track = get().tracks.find((t) => t.kind === 'audio')
+        }
+        trackId = track?.id
+      }
+      if (!trackId) return { ok: false, error: 'Kon geen audiotrack aanmaken.' }
+
+      get().addAssets([newAsset])
+
+      if (companion) {
+        useEditorStore.setState((st) => ({
+          clips: st.clips.map((c) =>
+            c.id === companion.id
+              ? { ...c, assetId: newAsset.id, assetPath: newAsset.path, extractedFromAssetId: assetId }
+              : c
+          ),
+          selectedClipId: companion.id
+        }))
+        return { ok: true, clipId: companion.id, assetId: newAsset.id, outPath: newAsset.path, trackId }
+      }
+
+      const clip: Clip = {
+        id: uid(),
+        assetId: newAsset.id,
+        assetPath: newAsset.path,
+        trackId,
+        start,
+        duration: duration > 0 ? duration : 5,
+        sourceStart,
+        volume: source?.volume ?? 1,
+        effects: { ...DEFAULT_EFFECTS },
+        transitionIn: null,
+        transitionOut: null,
+        kind: 'audio',
+        extractedFromAssetId: assetId
+      }
+      set((st) => ({ clips: [...st.clips, clip], selectedClipId: clip.id }))
+      return { ok: true, clipId: clip.id, assetId: newAsset.id, outPath: newAsset.path, trackId }
     },
 
     addTextClip: (trackId, start, text) => {

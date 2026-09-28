@@ -106,11 +106,20 @@ export async function inspectMedia(paths: string[]): Promise<Asset[]> {
         continue
       }
       const isAudio = AUDIO_EXT.test(p)
-      // try ffprobe via main for accurate duration (cross-platform, Windows-ready)
-      let duration: number | null = null
+      // Echte stream-detectie via ffmpeg: `videoEl.audioTracks` bestaat niet in
+      // Chromium, dus anders zou elke video (ook zonder geluid) audio krijgen.
+      let probe: Awaited<ReturnType<typeof window.api.probeMedia>> | null = null
       try {
-        duration = await window.api.getMediaDuration(p)
-      } catch { duration = null }
+        probe = await window.api.probeMedia(p)
+      } catch {
+        probe = null
+      }
+      let duration: number | null = probe?.duration ?? null
+      try {
+        if (duration == null) duration = await window.api.getMediaDuration(p)
+      } catch {
+        duration = null
+      }
       const el = isAudio ? new Audio() : document.createElement('video')
       el.preload = 'auto'
       el.src = mediaUrl(p)
@@ -119,15 +128,18 @@ export async function inspectMedia(paths: string[]): Promise<Asset[]> {
         duration = Number.isFinite(el.duration) ? el.duration : 0
       }
       const vEl = el as HTMLVideoElement
-      const width = isAudio ? 0 : vEl.videoWidth || 0
-      const height = isAudio ? 0 : vEl.videoHeight || 0
+      const width = isAudio ? 0 : probe?.width || vEl.videoWidth || 0
+      const height = isAudio ? 0 : probe?.height || vEl.videoHeight || 0
       let hasAudio = isAudio
       if (!isAudio) {
-        try {
-          const audioTracks = (vEl as unknown as { audioTracks?: { length?: number } }).audioTracks
-          hasAudio = audioTracks ? (audioTracks.length ?? 0) > 0 : true
-        } catch {
-          hasAudio = true
+        if (probe?.ok) hasAudio = probe.hasAudio
+        else {
+          try {
+            const audioTracks = (vEl as unknown as { audioTracks?: { length?: number } }).audioTracks
+            hasAudio = audioTracks ? (audioTracks.length ?? 0) > 0 : true
+          } catch {
+            hasAudio = true
+          }
         }
       }
 
@@ -204,7 +216,8 @@ export async function importPaths(paths: string[], opts?: { place?: boolean }): 
               effects: { ...DEFAULT_EFFECTS },
               transitionIn: null as null,
               transitionOut: null as null,
-              kind: 'audio' as const
+              kind: 'audio' as const,
+              extractedFromAssetId: a.id
             }
             useEditorStore.setState((st) => ({ clips: [...st.clips, audioClip] }))
           }
