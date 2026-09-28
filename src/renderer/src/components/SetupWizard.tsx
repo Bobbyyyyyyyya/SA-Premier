@@ -30,9 +30,9 @@ const ENGINE_INFO = [
   {
     key: 'ollama' as const,
     icon: IconChat,
-    name: 'Ollama tekst-AI',
-    desc: 'Titels, scripts en ideeën genereren. Model wordt bij eerste gebruik gepulled.',
-    size: '~2–5 GB'
+    name: 'Ollama — ondertitels vertalen',
+    desc: 'Vertaalt Whisper-ondertitels naar je doeltalen. Een klein model (~1 GB) is genoeg; zonder dit krijg je alleen de bron-taal.',
+    size: '~1 GB'
   }
 ]
 

@@ -62,6 +62,24 @@ export default function AiPanel(): JSX.Element {
   const [beatResult, setBeatResult] = useState<{ ok: boolean; name?: string; base64?: string; error?: string } | null>(null)
   const [beatBusy, setBeatBusy] = useState(false)
   const [musicProgress, setMusicProgress] = useState<AiMusicProgress | null>(null)
+  const [flash, setFlash] = useState<'img' | 'music' | null>(null)
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (imgResult?.ok) {
+      setFlash('img')
+      const t = window.setTimeout(() => setFlash(null), 1400)
+      return () => window.clearTimeout(t)
+    }
+  }, [imgResult])
+
+  useEffect(() => {
+    if (beatResult?.ok) {
+      setFlash('music')
+      const t = window.setTimeout(() => setFlash(null), 1400)
+      return () => window.clearTimeout(t)
+    }
+  }, [beatResult])
   const [setupMode, setSetupMode] = useState('ondemand')
 
   // --- AI Subtitles (whisper + multi-lang) ---
@@ -485,6 +503,12 @@ export default function AiPanel(): JSX.Element {
     setSubBusy(false)
   }
 
+  const anyBusy = imgBusy || beatBusy || subBusy || Object.values(installs).some((i) => i.phase === 'downloading') || Object.values(musicInstalls).some((i) => i.phase === 'downloading')
+  useEffect(() => {
+    document.body.classList.toggle('ai-busy', anyBusy)
+    return () => document.body.classList.remove('ai-busy')
+  }, [anyBusy])
+
   const filteredImage = catalog.filter((c) => !modelSearch || c.name.toLowerCase().includes(modelSearch.toLowerCase()) || c.description.toLowerCase().includes(modelSearch.toLowerCase()))
   const filteredMusic = musicCatalog.filter((c) => !modelSearch || c.name.toLowerCase().includes(modelSearch.toLowerCase()) || c.description.toLowerCase().includes(modelSearch.toLowerCase()))
   const totalModels = catalog.length + musicCatalog.length
@@ -504,8 +528,8 @@ export default function AiPanel(): JSX.Element {
         <span className={`dot ${ollama.available ? 'ok' : starting.ollama ? 'wait' : 'bad'}`} />
         <span>
           {ollama.available
-            ? `Ollama ready${ollama.version ? ' · v' + ollama.version : ''}`
-            : starting.ollama ? 'Ollama starten… (auto)' : 'Ollama niet actief'}
+            ? `Ollama ready${ollama.version ? ' · v' + ollama.version : ''} — vertaalt ondertitels`
+            : starting.ollama ? 'Ollama starten… (auto)' : 'Ollama niet actief — ondertitels blijven in de bron-taal'}
         </span>
         {!ollama.available && (
           <button onClick={() => startOne('ollama')} disabled={starting.ollama} style={{ marginLeft: 'auto' }} title="Klik voor actie" data-tooltip="Klik voor actie">
@@ -547,7 +571,15 @@ export default function AiPanel(): JSX.Element {
       <div className="inspector-section models-overview">
         <div className="models-header">
           <h4 style={{ margin: 0 }}>Models</h4>
-          <span className="models-count">{installedCount} / {totalModels} installed</span>
+          <span className="models-count">
+            {installedCount} / {totalModels} installed
+            <span className="models-mini-track">
+              <span
+                className="models-mini-fill"
+                style={{ width: `${totalModels ? (installedCount / totalModels) * 100 : 0}%` }}
+              />
+            </span>
+          </span>
         </div>
         <div className="models-search">
           <input className="text-input" placeholder="Search models…" value={modelSearch} onChange={(e) => setModelSearch(e.target.value)} />
@@ -570,14 +602,21 @@ export default function AiPanel(): JSX.Element {
                       <div className="model-size">{formatMb(Math.round(m.size / 1024 / 1024))} • installed</div>
                     </div>
                     <button
-                      className="model-uninstall"
+                      className={`model-uninstall ${confirmRemove === m.name ? 'confirm' : ''}`}
                       onClick={async () => {
+                        if (confirmRemove !== m.name) {
+                          setConfirmRemove(m.name)
+                          window.setTimeout(() => setConfirmRemove(null), 2500)
+                          return
+                        }
+                        setConfirmRemove(null)
                         const r = await window.api.comfyUninstall(m.name)
                         if (!r.ok) alert(r.error ?? 'Verwijderen mislukt')
                         void refreshComfy()
                       }}
-                     title="Remove" data-tooltip="Remove">
-                      Remove
+                     title="Verwijder model"
+                     data-tooltip={confirmRemove === m.name ? 'Klik nogmaals om te verwijderen' : 'Verwijder model'}>
+                      {confirmRemove === m.name ? 'Zeker?' : 'Remove'}
                     </button>
                   </div>
                 ))}
@@ -635,8 +674,14 @@ export default function AiPanel(): JSX.Element {
                       <div className="model-size">{formatMb(Math.round(m.size / 1024 / 1024))} • installed</div>
                     </div>
                     <button
-                      className="model-uninstall"
+                      className={`model-uninstall ${confirmRemove === m.name ? 'confirm' : ''}`}
                       onClick={async () => {
+                        if (confirmRemove !== m.name) {
+                          setConfirmRemove(m.name)
+                          window.setTimeout(() => setConfirmRemove(null), 2500)
+                          return
+                        }
+                        setConfirmRemove(null)
                         if (!confirm(`Music-model ${m.name} verwijderen?`)) return
                         const r = await window.api.musicUninstall(m.name)
                         if (!r.ok) {
@@ -646,8 +691,9 @@ export default function AiPanel(): JSX.Element {
                         }
                         void refreshComfy()
                       }}
-                     title="Remove" data-tooltip="Remove">
-                      Remove
+                     title="Verwijder model"
+                     data-tooltip={confirmRemove === m.name ? 'Klik nogmaals om te verwijderen' : 'Verwijder model'}>
+                      {confirmRemove === m.name ? 'Zeker?' : 'Remove'}
                     </button>
                   </div>
                 ))}
@@ -737,12 +783,19 @@ export default function AiPanel(): JSX.Element {
               placeholder="Describe an image…"
             />
             <div className="btn-row">
-              <button className="primary" onClick={runImage} disabled={imgBusy || !comfy.available} title="Generate image" data-tooltip="Generate image">
-                Generate image
+              <button
+                className={`primary ${imgBusy ? 'is-busy' : ''}`}
+                onClick={runImage}
+                disabled={imgBusy || !comfy.available}
+                title="Generate image"
+                data-tooltip="Generate image"
+              >
+                {imgBusy && <span className="spinner" aria-hidden="true" />}
+                {imgBusy ? 'Bezig…' : 'Generate image'}
               </button>
             </div>
             {imgBusy && imgProgress && (
-              <div className="ai-progress-container">
+              <div className={`ai-progress-container ${flash === 'img' ? 'flash' : ''}`}>
                 <div className="ai-progress-status">
                   {imgProgress.phase === 'starting' && 'Initializing...'}
                   {imgProgress.phase === 'loading-model' && 'Loading model into VRAM...'}
@@ -833,12 +886,19 @@ export default function AiPanel(): JSX.Element {
           <span className="val">{seconds}s</span>
         </div>
         <div className="btn-row">
-          <button className="primary" onClick={runBeat} disabled={beatBusy} title="Generate beat" data-tooltip="Generate beat">
-            Generate beat
+          <button
+            className={`primary ${beatBusy ? 'is-busy' : ''}`}
+            onClick={runBeat}
+            disabled={beatBusy}
+            title="Generate beat"
+            data-tooltip="Generate beat"
+          >
+            {beatBusy && <span className="spinner" aria-hidden="true" />}
+            {beatBusy ? 'Bezig…' : 'Generate beat'}
           </button>
         </div>
         {beatBusy && musicProgress && (
-          <div className="ai-progress-container">
+          <div className={`ai-progress-container ${flash === 'music' ? 'flash' : ''}`}>
             <div className="ai-progress-status">
               {musicProgress.phase === 'generating' && (musicProgress.message || 'Synthesizing beat...')}
               {musicProgress.phase === 'error' && `Error: ${musicProgress.error}`}

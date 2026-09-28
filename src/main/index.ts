@@ -195,8 +195,6 @@ function registerIpc(): void {
 
   ipcMain.handle('ai-ping', () => ai.pingOllama())
   ipcMain.handle('ai-start', () => ai.ensureOllama())
-  ipcMain.handle('ai-models', () => ai.listModels())
-  ipcMain.handle('ai-text', (_e, model: string, prompt: string) => ai.generateText(model, prompt))
   ipcMain.handle('ai-beat', async (event, seconds: number, bpm: number, prompt?: string, modelId?: string) => {
     const p = (prompt ?? '').trim()
     const mid = modelId || 'facebook/musicgen-medium'
@@ -287,7 +285,6 @@ function registerIpc(): void {
   ipcMain.handle('comfy-status', () => comfy.comfyStatus())
   ipcMain.handle('comfy-models', () => comfy.listCheckpoints())
   ipcMain.handle('comfy-catalog', () => comfy.CATALOG)
-  ipcMain.handle('comfy-installed-dir', () => comfy.comfyDirExists())
   ipcMain.handle('comfy-start', () => comfy.ensureComfyUIAsync())
   ipcMain.handle('comfy-install', (event, id: string) => {
     const item = comfy.CATALOG.find((m) => m.id === id)

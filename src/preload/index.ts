@@ -1,6 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type {
-  AiGenerateResult,
   AiImageProgress,
   AiMusicProgress,
   CatalogModel,
@@ -12,7 +11,6 @@ import type {
   InstallProgress,
   InstalledModel,
   MusicStatus,
-  OllamaModelInfo,
   RecentMediaItem,
   SavedProject,
   TranscribeProgress,
@@ -40,8 +38,6 @@ const api = {
 
   aiPing: (): Promise<{ available: boolean; version?: string }> => ipcRenderer.invoke('ai-ping'),
   aiStart: (): Promise<{ available: boolean; started?: boolean; error?: string }> => ipcRenderer.invoke('ai-start'),
-  aiModels: (): Promise<OllamaModelInfo[]> => ipcRenderer.invoke('ai-models'),
-  aiText: (model: string, prompt: string): Promise<AiGenerateResult> => ipcRenderer.invoke('ai-text', model, prompt),
   aiBeat: (seconds: number, bpm: number, prompt?: string, modelId?: string): Promise<{ ok: boolean; name?: string; base64?: string; error?: string }> =>
     ipcRenderer.invoke('ai-beat', seconds, bpm, prompt, modelId),
   aiSaveImage: (dataUrl: string, name: string): Promise<{ ok: boolean; path?: string; cancelled?: boolean }> =>
@@ -60,7 +56,6 @@ const api = {
   comfyStatus: (): Promise<ComfyStatus> => ipcRenderer.invoke('comfy-status'),
   comfyModels: (): Promise<InstalledModel[]> => ipcRenderer.invoke('comfy-models'),
   comfyCatalog: (): Promise<CatalogModel[]> => ipcRenderer.invoke('comfy-catalog'),
-  comfyInstalledDir: (): Promise<boolean> => ipcRenderer.invoke('comfy-installed-dir'),
   comfyStart: (): Promise<{ available: boolean; started?: boolean; error?: string }> => ipcRenderer.invoke('comfy-start'),
   comfyInstall: (id: string): Promise<InstallProgress> => ipcRenderer.invoke('comfy-install', id),
   comfyUninstall: (name: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('comfy-uninstall', name),

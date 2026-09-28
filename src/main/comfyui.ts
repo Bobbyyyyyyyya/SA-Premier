@@ -82,10 +82,6 @@ function activeInstall(): string | undefined {
   return any?.id
 }
 
-export function comfyDirExists(): boolean {
-  return fs.existsSync(comfyDir)
-}
-
 async function waitForComfyReady(timeoutMs = 60000): Promise<boolean> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
