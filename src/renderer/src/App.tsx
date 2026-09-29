@@ -8,6 +8,7 @@ import ExportDialog from './components/ExportDialog'
 import HomeScreen from './components/HomeScreen'
 import SetupWizard from './components/SetupWizard'
 import MediaAccessBanner from './components/MediaAccessBanner'
+import UpdateBanner from './components/UpdateBanner'
 import { useEditorStore } from './store'
 import { importPaths } from './lib/inspect'
 
@@ -156,6 +157,7 @@ export default function App(): JSX.Element {
       </div>
       <Timeline />
       <MediaAccessBanner />
+      <UpdateBanner />
       <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} />
       <SetupWizard open={setupOpen} onClose={() => setSetupOpen(false)} />
       {dragging && <div className="drop-overlay">Drop to import media</div>}

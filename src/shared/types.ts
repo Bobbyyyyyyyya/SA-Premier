@@ -865,6 +865,31 @@ export interface RecentMediaItem {
   addedAt: number
 }
 
+/**
+ * Voortgang van de auto-updater. De main-process stuurt dit naar de UI in
+ * plaats van blokkerende systeemdialogen, zodat een update net zo voelt als de
+ * rest van de app (banner met voortgang, geen knop die "bij hangt").
+ */
+/** Versie + of we in een gebouwde app draaien (dev heeft geen update-feed). */
+export interface AppInfo {
+  version: string
+  packaged: boolean
+}
+
+export type UpdaterPhase = 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error'
+
+export interface UpdaterStatus {
+  phase: UpdaterPhase
+  /** versie waar het om gaat (of de huidige, bij not-available) */
+  version?: string
+  /** 0–100 tijdens downloaden */
+  percent?: number
+  transferred?: number
+  total?: number
+  bytesPerSecond?: number
+  message?: string
+}
+
 export interface ComfyStatus {
   available: boolean
   device?: string

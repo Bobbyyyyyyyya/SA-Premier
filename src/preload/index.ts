@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type {
+  AppInfo,
+  UpdaterStatus,
   AiImageProgress,
   AiMusicProgress,
   CatalogModel,
@@ -131,10 +133,12 @@ const api = {
   projectSave: (data: SavedProject): Promise<void> => ipcRenderer.invoke('project-save', data),
   projectClear: (): Promise<void> => ipcRenderer.invoke('project-clear'),
 
-  updaterCheck: (): Promise<{ checking?: boolean; skipped?: boolean }> => ipcRenderer.invoke('updater-check'),
-  updaterQuitInstall: (): Promise<void> => ipcRenderer.invoke('updater-quit-install'),
-  onUpdaterStatus: (cb: (p: { phase: string; percent?: number; version?: string; message?: string }) => void): (() => void) => {
-    const l = (_e: Electron.IpcRendererEvent, p: { phase: string; percent?: number; version?: string; message?: string }): void => cb(p)
+  appInfo: (): Promise<AppInfo> => ipcRenderer.invoke('app-info'),
+  updaterCheck: (): Promise<{ checking?: boolean; skipped?: boolean; reason?: 'dev' }> => ipcRenderer.invoke('updater-check'),
+  updaterDownload: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('updater-download'),
+  updaterQuitInstall: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('updater-quit-install'),
+  onUpdaterStatus: (cb: (p: UpdaterStatus) => void): (() => void) => {
+    const l = (_e: Electron.IpcRendererEvent, p: UpdaterStatus): void => cb(p)
     ipcRenderer.on('updater-status', l)
     return () => ipcRenderer.removeListener('updater-status', l)
   },

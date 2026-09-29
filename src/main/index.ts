@@ -12,7 +12,7 @@ import * as project from './project'
 import * as probe from './probe'
 import * as aiSetup from './ai-setup'
 import { addRecent, clearRecents, loadRecents } from './recents'
-import type { ExportRequest, RecentMediaItem, SavedProject } from '../shared/types'
+import type { ExportRequest, RecentMediaItem, SavedProject, UpdaterStatus } from '../shared/types'
 import type { AiSetup } from './ai-setup'
 
 protocol.registerSchemesAsPrivileged([
@@ -53,44 +53,40 @@ function createWindow(): BrowserWindow {
   return win
 }
 
+/**
+ * Auto-updater.
+ *
+ * Alles gaat via `updater-status` naar de renderer: de UI toont een banner met
+ * voortgang en knoppen. Vóór dit deed main blokkerende showMessageBoxSync, wat
+ * de UI blind maakte (geen voortgang zichtbaar tijdens het dialoog).
+ */
 function setupAutoUpdater(win: BrowserWindow): void {
   if (!app.isPackaged) return
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = true
 
-  autoUpdater.on('update-available', (info) => {
-    const r = dialog.showMessageBoxSync(win, {
-      type: 'info',
-      buttons: ['Download nu', 'Later'],
-      defaultId: 0,
-      title: 'Update beschikbaar',
-      message: `SA Premier ${info.version} is beschikbaar (nu ${app.getVersion()}). Wil je updaten? Bestaande app wordt bijgewerkt.`
-    })
-    if (r === 0) {
-      void autoUpdater.downloadUpdate()
-      win.webContents.send('updater-status', { phase: 'downloading', percent: 0, version: info.version })
-    }
-  })
-  autoUpdater.on('download-progress', (p) => {
-    win.webContents.send('updater-status', { phase: 'downloading', percent: Math.round(p.percent), version: p.total ? undefined : undefined })
-  })
-  autoUpdater.on('update-downloaded', (info) => {
-    win.webContents.send('updater-status', { phase: 'downloaded', percent: 100, version: info.version })
-    const r = dialog.showMessageBoxSync(win, {
-      type: 'info',
-      buttons: ['Herstart en installeer', 'Later'],
-      defaultId: 0,
-      title: 'Update klaar',
-      message: `Update ${info.version} gedownload. Herstart om te installeren — vervangt de bestaande SA Premier (.pkg/.exe/.deb updatet automatisch).`
-    })
-    if (r === 0) autoUpdater.quitAndInstall()
-  })
-  autoUpdater.on('error', (err) => {
-    win.webContents.send('updater-status', { phase: 'error', message: err.message })
-  })
+  const send = (p: UpdaterStatus): void => {
+    if (!win.isDestroyed()) win.webContents.send('updater-status', p)
+  }
 
-  // Controleer elke 6 uur + bij start (na 8s)
+  autoUpdater.on('checking-for-update', () => send({ phase: 'checking' }))
+  autoUpdater.on('update-available', (info) => send({ phase: 'available', version: info.version }))
+  autoUpdater.on('update-not-available', (info) => send({ phase: 'not-available', version: info.version }))
+  autoUpdater.on('download-progress', (p) =>
+    send({
+      phase: 'downloading',
+      percent: Math.round(p.percent),
+      transferred: p.transferred,
+      total: p.total,
+      bytesPerSecond: p.bytesPerSecond
+    })
+  )
+  autoUpdater.on('update-downloaded', (info) => send({ phase: 'downloaded', version: info.version }))
+  autoUpdater.on('error', (err) => send({ phase: 'error', message: err.message }))
+
+  // bij start (na 8s) + elke 6 uur. Stil: alleen tonen als er iets te doen is.
   const check = (): void => {
+    if (!app.isPackaged) return
     void autoUpdater.checkForUpdates().catch(() => null)
   }
   setTimeout(check, 8000)
@@ -403,12 +399,24 @@ function registerIpc(): void {
   ipcMain.handle('ai-setup-set', (_e, patch: Partial<AiSetup>) => aiSetup.setAiSetup(patch))
   ipcMain.handle('ai-setup-summary', () => aiSetup.aiSetupSummary())
 
+  ipcMain.handle('app-info', () => ({ version: app.getVersion(), packaged: app.isPackaged }))
+
   ipcMain.handle('updater-check', () => {
-    if (!app.isPackaged) return { skipped: true }
+    // in dev (npm run dev) is er geen feed — zeg dat in plaats van stil te doen
+    if (!app.isPackaged) return { skipped: true, reason: 'dev' as const }
     void autoUpdater.checkForUpdates().catch(() => null)
     return { checking: true }
   })
-  ipcMain.handle('updater-quit-install', () => autoUpdater.quitAndInstall())
+  ipcMain.handle('updater-download', () => {
+    if (!app.isPackaged) return { ok: false }
+    void autoUpdater.downloadUpdate().catch(() => null)
+    return { ok: true }
+  })
+  ipcMain.handle('updater-quit-install', () => {
+    if (!app.isPackaged) return { ok: false }
+    autoUpdater.quitAndInstall()
+    return { ok: true }
+  })
 }
 
 const MEDIA_MIME: Record<string, string> = {

@@ -1980,3 +1980,126 @@ button[disabled][title]:hover::after { opacity: 1; }
 .sub-ctl { gap: 6px; }
 .sub-ctl .val { min-width: 42px; text-align: right; }
 .sub-panel .btn-row { margin-top: 6px; }
+
+/* ---------------- auto-updater ---------------- */
+/* Banner bovenin het venster, zelfde sfeer als de AI-banner maar kleiner. */
+.update-banner {
+  position: fixed;
+  top: 54px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 620px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #1c1b22, #141319);
+  border: 1px solid #332f3d;
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.5);
+  animation: ub-in 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+  font-size: 12px;
+  color: #e9e7f0;
+}
+.update-banner.available,
+.update-banner.downloaded {
+  border-color: rgba(255, 127, 42, 0.55);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 127, 42, 0.2);
+}
+.update-banner.error {
+  border-color: rgba(224, 108, 117, 0.5);
+}
+.update-banner .ub-text {
+  line-height: 1.45;
+  color: #cfcbd8;
+}
+.update-banner .ub-text b {
+  color: #fff;
+}
+.update-banner .ub-ico {
+  font-size: 15px;
+  color: var(--accent);
+  flex: none;
+}
+.update-banner .ub-ico.ok {
+  color: #4ade80;
+}
+.update-banner .ub-ico.warn {
+  color: #e0a23a;
+}
+.update-banner button {
+  flex: none;
+  padding: 4px 10px;
+  font-size: 11px;
+  border-radius: 8px;
+}
+.update-banner .ub-spinner {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  border-top-color: var(--accent);
+  animation: ub-spin 0.7s linear infinite;
+}
+@keyframes ub-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes ub-in {
+  from { opacity: 0; transform: translate(-50%, -10px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+.update-flash {
+  position: fixed;
+  top: 54px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 300;
+  padding: 7px 14px;
+  border-radius: 20px;
+  background: rgba(20, 19, 25, 0.94);
+  border: 1px solid #332f3d;
+  color: #d9d6e2;
+  font-size: 11px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.42);
+  animation: ub-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .update-banner,
+  .update-flash { animation: none; }
+  .update-banner .ub-spinner { animation-duration: 2.4s; }
+}
+
+/* versieknop in de toolbar */
+.version-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  border-radius: 20px;
+  color: #8e8a99;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid #2a2831;
+  cursor: pointer;
+  transition: color 0.14s ease, border-color 0.14s ease, background 0.14s ease;
+}
+.version-chip:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: rgba(255, 127, 42, 0.5);
+}
+.version-chip:disabled { opacity: 0.6; cursor: default; }
+.version-chip.has-update {
+  color: var(--accent);
+  border-color: rgba(255, 127, 42, 0.6);
+  background: rgba(255, 127, 42, 0.1);
+}
+.version-chip .vc-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255, 127, 42, 0.2);
+}

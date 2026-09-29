@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react'
 import { useEditorStore } from '../store'
 import { importFiles } from '../lib/inspect'
+import type { AppInfo, UpdaterStatus } from '../../../shared/types'
 
 const RESOLUTIONS = [
   { label: '1080p (1920x1080)', w: 1920, h: 1080 },
@@ -14,6 +16,25 @@ export default function Toolbar({ onExport, onHome }: { onExport: () => void; on
   const zoom = useEditorStore((s) => s.zoom)
   const setZoom = useEditorStore((s) => s.setZoom)
   const setProjectResolution = useEditorStore((s) => s.setProjectResolution)
+  const [info, setInfo] = useState<AppInfo | null>(null)
+  const [checking, setChecking] = useState(false)
+  const [update, setUpdate] = useState<UpdaterStatus | null>(null)
+
+  useEffect(() => {
+    void window.api.appInfo().then(setInfo).catch(() => null)
+    // de banner toont 'm; hier alleen het icoontje zodat je ziet dat er iets is
+    return window.api.onUpdaterStatus((p) => {
+      setUpdate(p)
+      setChecking(p.phase === 'checking' || p.phase === 'downloading')
+    })
+  }, [])
+
+  // het echte check-werk (en de voortgangsbalk) zit in UpdateBanner.
+  // `checking` komt bewust ALLEEN uit het echte 'checking'-event: anders blijft
+  // de knop op "···" hangen wanneer de check niets terugstuurt (bijv. dev).
+  const checkForUpdates = (): void => {
+    window.dispatchEvent(new Event('check-updates'))
+  }
 
   return (
     <header className="toolbar">
@@ -66,6 +87,16 @@ export default function Toolbar({ onExport, onHome }: { onExport: () => void; on
           </option>
         ))}
       </select>
+      <button
+        className={`version-chip${update?.phase === 'available' || update?.phase === 'downloaded' ? ' has-update' : ''}`}
+        onClick={checkForUpdates}
+        disabled={checking}
+        title={`Versie ${info?.version ?? '…'} — klik om te controleren op updates`}
+        data-tooltip={`Versie ${info?.version ?? '…'} — controleer op updates`}
+      >
+        {checking ? '···' : `v${info?.version ?? '…'}`}
+        {(update?.phase === 'available' || update?.phase === 'downloaded') && <span className="vc-dot" />}
+      </button>
       <button className="primary" onClick={onExport} title="Export" data-tooltip="Export">
         Export
       </button>
