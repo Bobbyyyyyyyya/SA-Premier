@@ -1,10 +1,10 @@
 {
   "name": "sa-premier",
   "productName": "SA Premier",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A CapCut / DaVinci Resolve style video editor built with Electron, React and TypeScript",
   "main": "./out/main/index.js",
-  "author": "SA Premier <benthijmen@gmail.com>",
+  "author": "SA Premier <noreply@users.noreply.github.com>",
   "license": "MIT",
   "scripts": {
     "dev": "electron-vite dev",

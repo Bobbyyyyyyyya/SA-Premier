@@ -56,7 +56,7 @@ win:
     - portable
   artifactName: "${productName} Setup ${version}.${ext}"
 linux:
-  maintainer: SA Premier <benthijmen@gmail.com>
+  maintainer: SA Premier <noreply@users.noreply.github.com>
   category: Video
   target:
     - AppImage
@@ -72,4 +72,4 @@ nsis:
   include: build/installer.nsh
   warningsAsErrors: false
 extraMetadata:
-  version: 0.1.0
+  version: 0.2.0

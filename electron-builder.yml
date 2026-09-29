@@ -41,7 +41,7 @@ files:
   - '!electron.vite.config.*'
   - '!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,test,tests,__tests__,docs}'
 extraMetadata:
-  version: 0.1.0
+  version: 0.2.0
 
 # ffmpeg-binary kan niet vanuit asar draaien → altijd uitpakken.
 # Plus kopie als extraResources/bin/ffmpeg als fallback (export.ts kijkt daar ook).
@@ -92,7 +92,7 @@ win:
     - portable
   artifactName: "${productName} Setup ${version}.${ext}"
 linux:
-  maintainer: SA Premier <benthijmen@gmail.com>
+  maintainer: SA Premier <noreply@users.noreply.github.com>
   category: Video
   target:
     - AppImage
