@@ -47,6 +47,7 @@ export default function AiPanel(): JSX.Element {
   const [musicInstalled, setMusicInstalled] = useState<InstalledModel[]>([])
   const [musicCatalog, setMusicCatalog] = useState<CatalogModel[]>([])
   const [musicInstalls, setMusicInstalls] = useState<Record<string, InstallProgress>>({})
+  const [tab, setTab] = useState<'status' | 'modellen' | 'foto' | 'muziek' | 'subs'>('status')
   const [modelFilter, setModelFilter] = useState<'all' | 'image' | 'music'>('all')
   const [modelSearch, setModelSearch] = useState('')
   const [selectedMusic, setSelectedMusic] = useState('')
@@ -560,6 +561,30 @@ export default function AiPanel(): JSX.Element {
           Wijzig…
         </button>
       </div>
+      <div className="ai-tabs" role="tablist">
+        {([
+          ['status', 'Status', 'Engines en setup'],
+          ['modellen', 'Modellen', 'Foto- en muziekmodellen beheren'],
+          ['foto', 'Foto', 'AI-foto genereren'],
+          ['muziek', 'Muziek', 'AI-muziek genereren'],
+          ['subs', 'Ondertitels', 'Ondertitels van je beeld']
+        ] as const).map(([id, label, tip]) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={tab === id}
+            className={tab === id ? 'active' : ''}
+            onClick={() => setTab(id)}
+            title={tip}
+            data-tooltip={tip}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'status' && (
+      <>
       <div className="ai-status">
         <span className={`dot ${ollama.available ? 'ok' : starting.ollama ? 'wait' : 'bad'}`} />
         <span>
@@ -628,6 +653,11 @@ export default function AiPanel(): JSX.Element {
       {startError.music && <div className="ai-error" style={{ padding: '4px 10px' }}>{startError.music}</div>}
 
       {/* Models Overview */}
+      </>
+      )}
+
+      {tab === 'modellen' && (
+      <>
       <div className="inspector-section models-overview">
         <div className="models-header">
           <h4 style={{ margin: 0 }}>Models</h4>
@@ -801,6 +831,11 @@ export default function AiPanel(): JSX.Element {
       </div>
 
       {/* AI Photo */}
+      </>
+      )}
+
+      {tab === 'foto' && (
+      <>
       <div className="inspector-section">
         <h4>AI Photo</h4>
         {installed.length === 0 ? (
@@ -887,6 +922,11 @@ export default function AiPanel(): JSX.Element {
       </div>
 
       {/* AI Beat */}
+      </>
+      )}
+
+      {tab === 'muziek' && (
+      <>
       <div className="inspector-section">
         <h4>AI Beat (music)</h4>
         {musicInstalled.length > 0 && (
@@ -988,11 +1028,17 @@ export default function AiPanel(): JSX.Element {
       </div>
 
       {/* AI Subtitles */}
+      </>
+      )}
+
+      {tab === 'subs' && (
+      <>
       <div className="inspector-section">
         <h4>AI Subtitles</h4>
         <div className="ai-hint" style={{ marginBottom: 8 }}>
           Whisper transcribeert de langste clip (of de clip onder de playhead) en maakt tekst-tracks — meerdere talen tegelijk.
           Vertaling naar andere talen gebruikt lokaal Ollama.
+
         </div>
 
         <div className="ctl">
@@ -1186,6 +1232,9 @@ export default function AiPanel(): JSX.Element {
           </div>
         )}
       </div>
+      </>
+      )}
+
     </div>
   )
 }

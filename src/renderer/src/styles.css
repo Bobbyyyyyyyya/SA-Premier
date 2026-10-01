@@ -263,62 +263,33 @@ select:focus {
   background: transparent;
 }
 
-/* AI tab with rainbow glow animation */
 .ai-tab {
   position: relative;
-  overflow: visible;
 }
+/* GEEN regenboog meer: een oranje accent-gloed, en een zachte puls zolang het
+   AI-paneel bezig is (body.ai-busy). */
 .ai-tab::before {
   content: '';
   position: absolute;
   inset: -2px;
   border-radius: 4px;
-  background: linear-gradient(
-    90deg,
-    #ff0000,
-    #ff8800,
-    #ffff00,
-    #00ff00,
-    #00ffff,
-    #0000ff,
-    #8800ff,
-    #ff00ff,
-    #ff0000
-  );
-  background-size: 300% 100%;
+  background: radial-gradient(120% 140% at 50% 120%, rgba(255, 127, 42, 0.22), rgba(255, 127, 42, 0));
   opacity: 0;
-  z-index: -1;
-  transition: opacity 0.3s ease;
-  animation: rainbow-glow 3s linear infinite;
+  transition: opacity 0.18s ease;
+  pointer-events: none;
 }
 .ai-tab:hover::before,
 .ai-tab.active::before {
   opacity: 1;
 }
-.ai-tab.active::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(
-    90deg,
-    #ff0000,
-    #ff8800,
-    #ffff00,
-    #00ff00,
-    #00ffff,
-    #0000ff,
-    #8800ff,
-    #ff00ff,
-    #ff0000
-  );
-  background-size: 300% 100%;
-  animation: rainbow-glow 3s linear infinite;
+body.ai-busy .ai-tab::before {
+  opacity: 1;
+  animation: ai-tab-pulse 1.6s ease-in-out infinite;
 }
-@keyframes rainbow-glow {
-  0% { background-position: 0% 50%; }
+@keyframes ai-tab-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
   100% { background-position: 300% 50%; }
 }
 
@@ -2212,4 +2183,42 @@ button[disabled][title]:hover::after { opacity: 1; }
   background: rgba(255, 255, 255, 0.28);
   transform: translateX(-0.5px);
   pointer-events: none;
+}
+
+/* ---------------- AI-paneel: tabs i.p.v. één lange scroll ---------------- */
+.ai-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 10px 0;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: linear-gradient(180deg, var(--bg-2) 72%, rgba(0, 0, 0, 0));
+}
+.ai-tabs button {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 4px 7px;
+  font-size: 11px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.14s ease, border-color 0.14s ease, background 0.14s ease;
+}
+.ai-tabs button:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+}
+.ai-tabs button.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  background: rgba(255, 127, 42, 0.07);
+}
+@media (max-width: 1180px) {
+  .ai-tabs button { font-size: 10px; padding: 6px 2px 7px; }
 }
