@@ -271,6 +271,12 @@ export default function Inspector(): JSX.Element {
     }
   }
 
+  // Deze hooks staan bewust BOVEN de vroege return hieronder: een conditional
+  // hook laat React crashen met "Rendered more hooks than during the previous
+  // render" en valt daarmee de hele app uit (preview mee).
+  const setClipAudioFx = useEditorStore((s) => s.setClipAudioFx)
+  const resetTrackAudioFx = useEditorStore((s) => s.resetTrackAudioFx)
+
   if (!clip) {
     return (
       <aside className="panel right">
@@ -625,8 +631,6 @@ export default function Inspector(): JSX.Element {
   }
 
   const fx = clip.effects
-  const setClipAudioFx = useEditorStore((s) => s.setClipAudioFx)
-  const resetTrackAudioFx = useEditorStore((s) => s.resetTrackAudioFx)
   const setFx = (patch: Partial<ClipEffects>): void => updateClip(clip.id, { effects: { ...fx, ...patch } })
   const resetFx = (): void => updateClip(clip.id, { effects: { ...DEFAULT_EFFECTS } })
   // badge 'aangepast' zodat je in de lijst ziet dát er iets staat zonder alles open te klappen
