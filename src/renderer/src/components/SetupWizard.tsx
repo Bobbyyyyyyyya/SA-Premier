@@ -148,10 +148,17 @@ export default function SetupWizard({ open, onClose }: { open: boolean; onClose:
                       <div className="model-size">{e.desc}</div>
                     </div>
                     <button
-                      className={effFlags[e.key] ? 'primary' : ''}
+                      className={`engine-toggle${effFlags[e.key] ? ' on' : ''}`}
+                      role="switch"
+                      aria-checked={effFlags[e.key]}
                       onClick={() => setFlags((f) => ({ ...f, [e.key]: !f[e.key] }))}
-                     title="Klik voor actie" data-tooltip="Klik voor actie">
-                      {effFlags[e.key] ? 'Aan ✓' : 'Uit'}
+                      title={effFlags[e.key] ? 'Staat aan — klik om uit te zetten' : 'Staat uit — klik om aan te zetten'}
+                      data-tooltip={effFlags[e.key] ? 'Aan' : 'Uit'}
+                    >
+                      <span className="toggle-track">
+                        <span className="toggle-knob" />
+                      </span>
+                      <span className="toggle-label">{effFlags[e.key] ? 'Aan' : 'Uit'}</span>
                     </button>
                   </div>
                   )

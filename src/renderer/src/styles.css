@@ -1358,20 +1358,32 @@ body.ai-busy .ai-tab::before {
 }
 .home-hero-inner {
   position: relative;
-  display: flex;
+  /* grid i.p.v. flex: met flex won het CTA-raster (min 3x176px) en klapte de
+     brand-block naar 96px, waardoor de tagline over vier regels brak */
+  display: grid;
+  grid-template-columns: minmax(240px, 0.85fr) minmax(0, 1.15fr);
   align-items: center;
-  justify-content: space-between;
-  gap: 24px;
+  gap: 28px;
   padding: 28px 36px;
 }
-.home-brand-block { flex: 1; min-width: 0; }
+@media (max-width: 980px) {
+  .home-hero-inner { grid-template-columns: 1fr; gap: 18px; }
+}
+.home-brand-block { min-width: 0; }
 .home-brand--light { color: #1a1a1e; font-size: 28px; }
 .home-brand--light span { background: linear-gradient(90deg, #ff7f2a, #7c3aed); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
 .home-tagline { color: #6b6b7a; font-size: 13px; margin-top: 4px; }
 .home-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 .home-pill { font-size: 11px; padding: 4px 8px; border-radius: 20px; background: #fff; border: 1px solid #e8e2d9; color: #4a4a5a; }
-.home-hero-actions { display: flex; gap: 12px; flex-wrap: wrap; }
-.home-cta { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-radius: 12px; background: #fff; border: 1.5px solid #e8e2d9; min-width: 190px; text-align: left; }
+.home-hero-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(176px, 1fr)); gap: 12px; align-content: center; min-width: 0; }
+.home-cta { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-radius: 12px; background: #fff; border: 1.5px solid #e8e2d9; min-width: 190px; text-align: left; color: #1a1a1e; }
+/* button { color: var(--text) } is een donker-thema-waarde: zonder dit worden
+   titels en het robot-icoon onleesbaar op deze lichte kaarten. En button:hover
+   (0,1,1) won van .home-cta (0,1,0), waardoor hover de witte kaart donker maakte. */
+.home-cta:hover { background: #fff; border-color: #ff7f2a; }
+.home-cta.primary:hover { background: linear-gradient(180deg, #ff9250, #ff7f2a); border-color: #ff7f2a; }
+.home-cta.ghost { background: rgba(255, 255, 255, 0.6); border-color: #e8e2d9; border-style: dashed; }
+.home-cta.ghost:hover { background: #fff; border-color: #ff7f2a; border-style: solid; }
 .home-cta.primary { background: linear-gradient(180deg, #ff9250, #ff7f2a); border-color: #ff7f2a; color: #1a120a; }
 .home-cta .cta-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.7); font-size: 18px; flex: none; }
 .home-cta.primary .cta-icon { background: rgba(255,255,255,0.85); }
@@ -2221,4 +2233,219 @@ button[disabled][title]:hover::after { opacity: 1; }
 }
 @media (max-width: 1180px) {
   .ai-tabs button { font-size: 10px; padding: 6px 2px 7px; }
+}
+
+/* ---------------- moderne standaarden ---------------- */
+/* 1. Focus zichtbaar voor alles wat klikbaar is (ook met het toetsenbord) */
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* 2. Knoppen: iets meer diepte, een duidelijke press en één hovertrakt */
+button {
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease, transform 0.08s ease, box-shadow 0.14s ease;
+}
+button:not(:disabled):active {
+  transform: translateY(1px);
+}
+button.primary {
+  box-shadow: 0 2px 10px rgba(255, 127, 42, 0.18);
+}
+button.primary:not(:disabled):hover {
+  box-shadow: 0 4px 16px rgba(255, 127, 42, 0.28);
+}
+
+/* 3. Selects en tekstvelden: eigen pijl, donker vlak, geen OS-look */
+select {
+  appearance: none;
+  padding-right: 26px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-dim) 50%),
+    linear-gradient(135deg, var(--text-dim) 50%, transparent 50%);
+  background-position: calc(100% - 14px) calc(50% + 1px), calc(100% - 9px) calc(50% + 1px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  transition: border-color 0.14s ease, background-color 0.14s ease;
+}
+select:hover {
+  border-color: var(--border-strong);
+}
+input[type='text'],
+input[type='number'],
+input:not([type]) {
+  transition: border-color 0.14s ease, box-shadow 0.14s ease;
+}
+input[type='text']:focus,
+input[type='number']:focus,
+input:not([type]):focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255, 127, 42, 0.14);
+  outline: none;
+}
+
+/* 4. Recente media: titel op een zachte verlooplaag i.p.v. een zwarte balk */
+.recent-card--light .recent-thumb {
+  overflow: hidden;
+  border-radius: 10px;
+  background-color: #17161c;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+.recent-card--light .recent-thumb::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 42%;
+  background: linear-gradient(180deg, rgba(10, 9, 12, 0) 0%, rgba(10, 9, 12, 0.55) 100%);
+  pointer-events: none;
+}
+.recent-card--light .recent-count {
+  position: absolute;
+  left: 7px;
+  bottom: 6px;
+  z-index: 1;
+  padding: 2px 7px;
+  border-radius: 20px;
+  font-size: 9.5px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+}
+.recent-card--light .recent-name {
+  margin-top: 8px;
+  color: #1a1a1e;
+  font-weight: 600;
+}
+.recent-card--light .recent-sub {
+  color: #8a8378;
+  font-size: 10.5px;
+  margin-top: 2px;
+}
+.recent-card--light {
+  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.recent-card--light:hover {
+  transform: translateY(-2px);
+}
+
+/* 5. Dialog-titel en veldlabels: iets minder schreeuwerig, betere hiërarchie */
+.modal h3 {
+  letter-spacing: -0.01em;
+}
+.field > label,
+.modal .field > label {
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+
+/* ---------------- wizard: schakelaars i.p.v. "Uit"/"Aan" ---------------- */
+.engine-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  flex: none;
+}
+.engine-toggle .toggle-track {
+  position: relative;
+  width: 30px;
+  height: 17px;
+  border-radius: 20px;
+  background: #302d38;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  transition: background 0.18s ease, box-shadow 0.18s ease;
+}
+.engine-toggle .toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #8b8698;
+  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), background 0.18s ease;
+}
+.engine-toggle.on {
+  color: var(--accent);
+}
+.engine-toggle.on .toggle-track {
+  background: rgba(255, 127, 42, 0.32);
+  box-shadow: inset 0 0 0 1px rgba(255, 127, 42, 0.5);
+}
+.engine-toggle.on .toggle-knob {
+  transform: translateX(13px);
+  background: var(--accent);
+}
+.engine-toggle:hover .toggle-track {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+.engine-toggle.on:hover .toggle-track {
+  box-shadow: inset 0 0 0 1px rgba(255, 127, 42, 0.75);
+}
+.engine-toggle .toggle-label {
+  min-width: 20px;
+  text-align: left;
+}
+
+/* ---------------- het app-logo in de UI ---------------- */
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.brand-logo {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: block;
+  flex: none;
+}
+.brand-text {
+  line-height: 1;
+}
+.home-logo {
+  width: 62px;
+  height: 62px;
+  border-radius: 16px;
+  display: block;
+  margin: 0 0 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 127, 42, 0.24);
+  transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.24s;
+}
+.home-logo:hover {
+  transform: translateY(-3px) scale(1.03);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(255, 127, 42, 0.5);
+}
+
+/* ---------------- lichte varianten die de basisregel overwonnen ----------------
+   De `--light`-regels staan in dit bestand vanaf regel ~1416, terwijl de
+   basisregels (`.recent-card`, `.recent-thumb`) pas bij ~1473 komen. Zelfde
+   specificiteit → de latere basisregel won, dus de "lichte" kaarten waren
+   donker met donkere tekst erop. Specificiteit verdubbelen lost het op,
+   ongeacht de volgorde in het bestand. */
+.recent-card.recent-card--light {
+  background: #fff;
+  border-color: #e8e2d9;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+.recent-card.recent-card--light:hover {
+  border-color: #ff7f2a;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.07);
+}
+.recent-thumb.recent-thumb--light {
+  border-radius: 10px 10px 0 0;
+  background-color: #eceae6;
+}
+.recent-name.recent-name--light {
+  color: #1a1a1e;
+}
+.recent-card--light .recent-name {
+  color: #1a1a1e;
+  font-weight: 600;
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useEditorStore } from '../store'
 import { importFiles } from '../lib/inspect'
+import logo from '../assets/logo.svg'
 import type { AppInfo, UpdaterStatus } from '../../../shared/types'
 
 const RESOLUTIONS = [
@@ -39,7 +40,8 @@ export default function Toolbar({ onExport, onHome }: { onExport: () => void; on
     <header className="toolbar">
       <button className="ghost home-btn" onClick={onHome} title="Home" data-tooltip="Home">⌂</button>
       <div className="brand">
-        SA<span>Premier</span>
+        <img className="brand-logo" src={logo} alt="" />
+        <span className="brand-text">SA<span>Premier</span></span>
       </div>
       <button onClick={() => importFiles()} title="Import" data-tooltip="Import">Import</button>
       <div className="spacer" />

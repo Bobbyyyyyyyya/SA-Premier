@@ -5,6 +5,7 @@ import { importPaths, importFiles } from '../lib/inspect'
 import { mediaUrl } from '../lib/mediaUrl'
 import { useEditorStore, selectTotal } from '../store'
 import { formatTime } from '../lib/format'
+import logo from '../assets/logo.svg'
 
 export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Element {
   const [recent, setRecent] = useState<RecentMediaItem[]>([])
@@ -64,6 +65,7 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
         <div className="home-hero-bg" />
         <div className="home-hero-inner">
           <div className="home-brand-block">
+            <img className="home-logo" src={logo} alt="SA Premier" />
             <div className="home-brand home-brand--light">
               SA<span>Premier</span>
             </div>

@@ -178,16 +178,28 @@ app.router.add_post("/generate", generate_handler)
 app.router.add_get("/progress", progress_handler)
 
 
-async def preload_model(app):
-    print(f"[music] preloading {DEFAULT_MODEL}...", flush=True)
-    try:
-        await asyncio.to_thread(get_processor_model, DEFAULT_MODEL)
-        print(f"[music] default model ready", flush=True)
-    except Exception as e:
-        print(f"[music] preload failed: {e}", flush=True)
+async def schedule_preload(app):
+    """Warmup op de achtergrond.
+
+    Dit draait bewust NIET als await in on_startup: aiohttp bindt de poot pas
+    ná de on_startup-handlers, dus het ~25s laden van het model liet de server
+    25s lang onbereikbaar en de app gaf na 10s op met "reageert niet".
+    /generate laadt het model zelf op als dat nodig is, dus hier alleen warmen.
+    """
+    print(f"[music] preloading {DEFAULT_MODEL} op de achtergrond...", flush=True)
+
+    async def _warm():
+        try:
+            await asyncio.to_thread(get_processor_model, DEFAULT_MODEL)
+            set_progress(100, "ready", f"{DEFAULT_MODEL} klaar")
+            print("[music] default model ready", flush=True)
+        except Exception as e:
+            print(f"[music] preload failed: {e}", flush=True)
+
+    asyncio.create_task(_warm())
 
 
-app.on_startup.append(preload_model)
+app.on_startup.append(schedule_preload)
 
 if __name__ == "__main__":
     print(f"[music] starting on http://127.0.0.1:{PORT} device={DEVICE}", flush=True)

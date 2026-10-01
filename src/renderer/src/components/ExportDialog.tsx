@@ -101,12 +101,12 @@ export default function ExportDialog({ open, onClose }: { open: boolean; onClose
   return (
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal">
-        <h3>Export video</h3>
+        <h3>Video exporteren</h3>
 
         {!done && !running && (
           <>
             <div className="field">
-              <label>Resolution</label>
+              <label>Resolutie</label>
               <select value={fmtIdx} onChange={(e) => setFmtIdx(+e.target.value)}>
                 {FORMATS.map((f, i) => (
                   <option key={f.label} value={i}>
@@ -116,7 +116,7 @@ export default function ExportDialog({ open, onClose }: { open: boolean; onClose
               </select>
             </div>
             <div className="field">
-              <label>Frame rate</label>
+              <label>Beeldfrequentie</label>
               <select value={fps} onChange={(e) => { setFps(+e.target.value); setCustomFps('') }}>
                 {FPS_OPTIONS.map((f) => (
                   <option key={f.label} value={f.value}>
@@ -137,12 +137,12 @@ export default function ExportDialog({ open, onClose }: { open: boolean; onClose
               )}
             </div>
             <div className="progress-note">
-              Timeline: {total.toFixed(1)}s · {assets.length} media · {fmt.w}x{fmt.h} @ {fpsValid ? effFps : '—'} fps
+              Timeline: {total.toFixed(1)}s · {assets.length} media · {fmt.w}×{fmt.h} @ {fpsValid ? effFps : '—'} fps
               {total > 0 ? ' · klaar' : ' · geen clips'}
             </div>
             <div className="modal-actions">
               <div className="spacer" />
-              <button onClick={onClose} title="Close" data-tooltip="Close">Close</button>
+              <button onClick={onClose} title="Sluiten" data-tooltip="Sluiten">Sluiten</button>
               <button className="primary" onClick={start} disabled={!assets.length || !fpsValid} title="Export MP4" data-tooltip="Export MP4">
                 Export MP4
               </button>
@@ -162,7 +162,7 @@ export default function ExportDialog({ open, onClose }: { open: boolean; onClose
             <div className="progress-note">{progress?.percent ?? 0}%</div>
             <div className="modal-actions">
               <div className="spacer" />
-              <button onClick={cancel} title="Cancel" data-tooltip="Cancel">Cancel</button>
+              <button onClick={cancel} title="Annuleren" data-tooltip="Annuleren">Annuleren</button>
             </div>
           </>
         )}
@@ -188,7 +188,7 @@ export default function ExportDialog({ open, onClose }: { open: boolean; onClose
             <div className="error-text">{progress?.message ?? 'Export failed.'}</div>
             <div className="modal-actions">
               <div className="spacer" />
-              <button onClick={onClose} title="Close" data-tooltip="Close">Close</button>
+              <button onClick={onClose} title="Sluiten" data-tooltip="Sluiten">Sluiten</button>
             </div>
           </>
         )}
