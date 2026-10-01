@@ -13,7 +13,6 @@ const FPS_PRESETS = [23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60, 120]
 
 export default function Toolbar({ onExport, onHome }: { onExport: () => void; onHome: () => void }): JSX.Element {
   const project = useEditorStore((s) => s.project)
-  const zoom = useEditorStore((s) => s.zoom)
   const setZoom = useEditorStore((s) => s.setZoom)
   const setProjectResolution = useEditorStore((s) => s.setProjectResolution)
   const [info, setInfo] = useState<AppInfo | null>(null)
@@ -43,18 +42,6 @@ export default function Toolbar({ onExport, onHome }: { onExport: () => void; on
         SA<span>Premier</span>
       </div>
       <button onClick={() => importFiles()} title="Import" data-tooltip="Import">Import</button>
-      <div className="zoom">
-        <span>Zoom</span>
-        <input
-          type="range"
-          min={0.25}
-          max={3}
-          step={0.05}
-          value={zoom}
-          onChange={(e) => setZoom(+e.target.value)}
-        />
-        <span>{Math.round(zoom * 100)}%</span>
-      </div>
       <div className="spacer" />
       <select
         className="proj-info"

@@ -429,6 +429,9 @@ select:focus {
 .preview-pane {
   flex: 1;
   min-width: 0;
+  /* zonder dit loopt de transportrij ( Breed ~400px ) bij smalle vensters uit
+     en tekent die bovenop het rechterpaneel */
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   background:
@@ -458,9 +461,20 @@ select:focus {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
   padding: 7px 14px;
   background: var(--bg-2);
   border-top: 1px solid var(--border-strong);
+}
+/* de bediening mag krimpen; de speelbalk en tijd blijven altijd zichtbaar */
+.transport .scrub {
+  flex: 1 1 auto;
+  min-width: 40px;
+}
+.transport .scrub input[type='range'] { width: 100%; }
+.transport .time {
+  flex: none;
+  white-space: nowrap;
 }
 
 .transport .btn-play {
@@ -1845,6 +1859,10 @@ button.small { font-size: 11px; padding: 4px 8px; }
 }
 .transport .vol-mute.active { filter: grayscale(1); opacity: 0.7; }
 .transport .vol input[type='range'] { width: 90px; }
+/* te krap: master-volume weg (muziekvolume per clip blijft in de Inspector) */
+@media (max-width: 1180px) {
+  .transport .vol { display: none; }
+}
 .transport .vol-pct { font-size: 10.5px; color: var(--text-dim); font-family: ui-monospace, monospace; min-width: 32px; text-align: right; }
 .modal .field input {
   width: 100%; padding: 7px; background: var(--bg); color: var(--text);
@@ -2102,4 +2120,96 @@ button[disabled][title]:hover::after { opacity: 1; }
   border-radius: 50%;
   background: var(--accent);
   box-shadow: 0 0 0 3px rgba(255, 127, 42, 0.2);
+}
+
+/* ---------------- Inspector: inklapbare secties ---------------- */
+.inspector-section.collapsible {
+  padding: 0;
+  border-bottom: 1px solid var(--border);
+}
+.inspector-section .section-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 9px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: var(--text-dim);
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.14s ease, background 0.14s ease;
+}
+.inspector-section .section-head:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.03);
+}
+.inspector-section .section-head h4 {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: inherit;
+}
+.inspector-section.open .section-head {
+  color: var(--text);
+}
+.inspector-section .chev {
+  font-size: 9px;
+  width: 9px;
+  color: var(--accent);
+}
+.inspector-section .section-badge {
+  margin-left: auto;
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 7px;
+  border-radius: 20px;
+  background: rgba(255, 127, 42, 0.14);
+  color: var(--accent);
+  font-size: 9.5px;
+}
+.inspector-section .section-body {
+  padding: 2px 12px 14px;
+}
+
+/* groepjes binnen Beeld-effecten */
+.fx-group + .fx-group {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+.fx-group-title {
+  margin-bottom: 6px;
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* bipolar slider: middenstreep zodat 0 herkenbaar is (native fill loopt links→greep) */
+.ctl .ctl-track {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.ctl .ctl-track input[type='range'] {
+  width: 100%;
+  margin: 0;
+}
+.ctl-bipolar .ctl-track::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 2px;
+  bottom: 2px;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.28);
+  transform: translateX(-0.5px);
+  pointer-events: none;
 }

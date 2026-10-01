@@ -149,9 +149,12 @@ function registerIpc(): void {
         const args = ['-loglevel', 'error']
         if (seek) args.push('-ss', '0.3')
         args.push('-i', p, '-frames:v', '1', '-vf', 'scale=320:-2', '-f', 'image2pipe', '-c:v', 'png', '-')
-        execFile(bin, args, { maxBuffer: 10 * 1024 * 1024, timeout: 15000 }, (err, stdout) => {
-          if (!err && stdout.length > 0) {
-            resolve('data:image/png;base64,' + Buffer.from(stdout as unknown as Buffer).toString('base64'))
+        // encoding 'buffer' is essentieel: zonder dit geeft execFile een utf8-string
+        // terug en wordt de eerste PNG-byte (0x89) vervangen door U+FFFD → zwarte thumbnails
+        execFile(bin, args, { maxBuffer: 10 * 1024 * 1024, timeout: 15000, encoding: 'buffer' }, (err, stdout) => {
+          const buf = Buffer.isBuffer(stdout) ? stdout : Buffer.from(String(stdout))
+          if (!err && buf.length > 0) {
+            resolve('data:image/png;base64,' + buf.toString('base64'))
           } else if (seek) {
             run(false)
           } else {

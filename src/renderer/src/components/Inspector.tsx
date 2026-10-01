@@ -78,7 +78,10 @@ function Slider({
   min,
   max,
   step,
-  onChange
+  onChange,
+  unit = '',
+  bipolar = false,
+  scale = 100
 }: {
   label: string
   value: number
@@ -86,12 +89,53 @@ function Slider({
   max: number
   step: number
   onChange: (v: number) => void
+  /** eenheid achter de waarde, bv. '%' of '°' */
+  unit?: string
+  /** min < 0 < max: 0 zit dan in het midden en krijgt een streepje */
+  bipolar?: boolean
+  /** waarde × dit = getoonde waarde */
+  scale?: number
 }): JSX.Element {
+  const shown = value * scale
+  const text = (bipolar && value > 0 ? '+' : '') + Math.round(shown) + unit
   return (
-    <div className="ctl">
+    <div className={`ctl${bipolar ? ' ctl-bipolar' : ''}`}>
       <label>{label}</label>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(+e.target.value)} />
-      <span className="val">{Math.round(value * 100)}</span>
+      <span className="ctl-track">
+        <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(+e.target.value)} />
+      </span>
+      <span className="val">{text}</span>
+    </div>
+  )
+}
+
+/** Inklapbare sectie: houdt de Inspector leesbaar i.p.v. een muur schuivers. */
+function Section({
+  title,
+  children,
+  defaultOpen = true,
+  badge
+}: {
+  title: string
+  children: React.ReactNode
+  defaultOpen?: boolean
+  badge?: string
+}): JSX.Element {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div className={`inspector-section collapsible${open ? ' open' : ''}`}>
+      <button
+        className="section-head"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        title={open ? 'Klap dicht' : 'Klap open'}
+        data-tooltip={open ? 'Klap dicht' : 'Klap open'}
+      >
+        <span className="chev">{open ? '\u25be' : '\u25b8'}</span>
+        <h4>{title}</h4>
+        {badge && <span className="section-badge">{badge}</span>}
+      </button>
+      {open && <div className="section-body">{children}</div>}
     </div>
   )
 }
@@ -559,7 +603,7 @@ export default function Inspector(): JSX.Element {
               </select>
             </div>
             <div className="ctl">
-              <label style={{ width: 76 }}>Duration</label>
+              <label style={{ width: 76 }}>Duur</label>
               <input
                 type="range"
                 min={0.1}
@@ -583,6 +627,8 @@ export default function Inspector(): JSX.Element {
   const fx = clip.effects
   const setFx = (patch: Partial<ClipEffects>): void => updateClip(clip.id, { effects: { ...fx, ...patch } })
   const resetFx = (): void => updateClip(clip.id, { effects: { ...DEFAULT_EFFECTS } })
+  // badge 'aangepast' zodat je in de lijst ziet dát er iets staat zonder alles open te klappen
+  const fxActive = Object.values(fx).some((v) => Math.abs(v) > 0.001)
 
   const nextClip = clips
     .filter((c) => c.trackId === clip.trackId && c.id !== clip.id && c.start >= clip.start + clip.duration - 0.05)
@@ -591,10 +637,9 @@ export default function Inspector(): JSX.Element {
   return (
     <aside className="panel right">
       <div className="panel-body">
-        <div className="inspector-section">
-          <h4>Clip</h4>
+        <Section title="Clip" badge={clip.kind === 'text' ? 'tekst' : clip.kind === 'audio' ? 'audio' : 'video'}>
           <div className="ctl">
-            <label>Name</label>
+            <label>Naam</label>
             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {asset?.name ?? 'Clip'}
             </span>
@@ -602,7 +647,7 @@ export default function Inspector(): JSX.Element {
           <div className="ctl">
             <label>Start</label>
             <span className="val" style={{ width: 'auto' }}>{formatTime(clip.start)}</span>
-            <label style={{ width: 60 }}>Length</label>
+            <label style={{ width: 60 }}>Lengte</label>
             <span className="val" style={{ width: 'auto' }}>{formatTime(clip.duration)}</span>
           </div>
           <div className="ctl">
@@ -628,18 +673,17 @@ export default function Inspector(): JSX.Element {
           </div>
           <div className="btn-row">
             <button onClick={() => updateClip(clip.id, { volume: 1 })} title="100%" data-tooltip="100%">100%</button>
-            <button onClick={() => updateClip(clip.id, { volume: 0 })} title="Mute" data-tooltip="Mute">Mute</button>
-            <button className="danger-ghost" onClick={() => removeClip(clip.id)} title="Delete clip" data-tooltip="Delete clip">
-              Delete clip
+            <button onClick={() => updateClip(clip.id, { volume: 0 })} title="Gedempt" data-tooltip="Gedempt">Gedempt</button>
+            <button className="danger-ghost" onClick={() => removeClip(clip.id)} title="Clip verwijderen" data-tooltip="Clip verwijderen">
+              Verwijderen
             </button>
           </div>
-        </div>
+        </Section>
 
         {subCount > 0 && <SubtitlePanel />}
 
         {hasAudio && (
-          <div className="inspector-section">
-            <h4>Audio</h4>
+          <Section title="Audio" defaultOpen={false} badge={clip.kind === 'audio' ? 'audioclip' : undefined}>
             <div className="btn-row">
               {clip.kind === 'video' && (
                 <button onClick={() => void extractAudioClip()} disabled={extracting} title="Haal de audiotrack uit deze video en zet die als clip op de audiotrack" data-tooltip="Haal de audiotrack uit deze video en zet die als clip op de audiotrack">
@@ -647,7 +691,7 @@ export default function Inspector(): JSX.Element {
                 </button>
               )}
               <button onClick={saveAudioFile} disabled={extracting} title="Sla alleen het geluid op als WAV/MP3-bestand" data-tooltip="Sla alleen het geluid op als WAV/MP3-bestand">
-                {extracting ? 'Bezig…' : '💾 Save audio als…'}
+                {extracting ? 'Bezig…' : '💾 Geluid opslaan'}
               </button>
               <button
                 onClick={() => void generateSubtitlesForClip()}
@@ -655,7 +699,7 @@ export default function Inspector(): JSX.Element {
                 title="Genereer meertalige ondertitels voor deze clip (AI → Subtitles-track)"
                 data-tooltip="Genereer ondertitels"
               >
-                {subBusy ? 'Bezig…' : '💬 Generate subtitles'}
+                {subBusy ? 'Bezig…' : '💬 Ondertitels maken'}
               </button>
               <button
                 className="danger-ghost"
@@ -667,35 +711,44 @@ export default function Inspector(): JSX.Element {
                 title="Verwijder alle bestaande ondertitel-clips van de timeline"
                 data-tooltip="Alle ondertitels verwijderen"
               >
-                🗑 Remove all
+                🗑 Alles weg
               </button>
             </div>
             {subMsg && <div className="ai-hint">{subMsg}</div>}
             {extractMsg && <div className="ai-hint">{extractMsg}</div>}
             <div className="ai-hint">Tip: na extractie staat het geluid op de audiotrack en wordt de video zelf stil — anders dubbel geluid.</div>
-          </div>
+          </Section>
         )}
 
-        <div className="inspector-section">
-          <h4>Effects</h4>
-          <Slider label="Brightness" value={fx.brightness} min={-1} max={1} step={0.01} onChange={(v) => setFx({ brightness: v })} />
-          <Slider label="Contrast" value={fx.contrast} min={-1} max={1} step={0.01} onChange={(v) => setFx({ contrast: v })} />
-          <Slider label="Saturation" value={fx.saturation} min={-1} max={1} step={0.01} onChange={(v) => setFx({ saturation: v })} />
-          <Slider label="Hue" value={fx.hue / 180} min={-1} max={1} step={0.01} onChange={(v) => setFx({ hue: v * 180 })} />
-          <Slider label="Grayscale" value={fx.grayscale} min={0} max={1} step={0.01} onChange={(v) => setFx({ grayscale: v })} />
-          <Slider label="Sepia" value={fx.sepia} min={0} max={1} step={0.01} onChange={(v) => setFx({ sepia: v })} />
-          <Slider label="Blur" value={fx.blur} min={0} max={10} step={0.1} onChange={(v) => setFx({ blur: v })} />
-          <Slider label="Invert" value={fx.invert} min={0} max={1} step={0.01} onChange={(v) => setFx({ invert: v })} />
-          <Slider label="Vignette" value={fx.vignette} min={0} max={1} step={0.01} onChange={(v) => setFx({ vignette: v })} />
-          <div className="btn-row">
-            <button onClick={resetFx} title="Reset" data-tooltip="Reset">Reset</button>
+        <Section title="Beeld-effecten" defaultOpen={false} badge={fxActive ? 'aangepast' : undefined}>
+          <div className="fx-group">
+            <div className="fx-group-title">Licht &amp; kleur</div>
+            <Slider label="Helderheid" value={fx.brightness} min={-1} max={1} step={0.01} bipolar onChange={(v) => setFx({ brightness: v })} />
+            <Slider label="Contrast" value={fx.contrast} min={-1} max={1} step={0.01} bipolar onChange={(v) => setFx({ contrast: v })} />
+            <Slider label="Verzadiging" value={fx.saturation} min={-1} max={1} step={0.01} bipolar onChange={(v) => setFx({ saturation: v })} />
+            <Slider label="Kleurtoon" value={fx.hue / 180} min={-1} max={1} step={0.01} bipolar unit="°" onChange={(v) => setFx({ hue: v * 180 })} />
+            <Slider label="Grijs" value={fx.grayscale} min={0} max={1} step={0.01} unit="%" onChange={(v) => setFx({ grayscale: v })} />
+            <Slider label="Sepia" value={fx.sepia} min={0} max={1} step={0.01} unit="%" onChange={(v) => setFx({ sepia: v })} />
+            <Slider label="Negatief" value={fx.invert} min={0} max={1} step={0.01} unit="%" onChange={(v) => setFx({ invert: v })} />
           </div>
-        </div>
+          <div className="fx-group">
+            <div className="fx-group-title">Afwerking</div>
+            <Slider label="Vervagen" value={fx.blur} min={0} max={10} step={0.1} scale={10} unit="px" onChange={(v) => setFx({ blur: v })} />
+            <Slider label="Vignet" value={fx.vignette} min={0} max={1} step={0.01} unit="%" onChange={(v) => setFx({ vignette: v })} />
+          </div>
+          <div className="btn-row">
+            <button onClick={resetFx} title="Alles terug naar 0" data-tooltip="Alles terug naar 0">Alles terug</button>
+          </div>
+        </Section>
 
-        <div className="inspector-section" key={clip.id + ':' + ((clip.transitionOut ?? clip.transitionIn)?.type ?? 'none')}>
-          <h4>Transition</h4>
+        <Section
+          title="Overgang"
+          defaultOpen={false}
+          key={clip.id + ':' + ((clip.transitionOut ?? clip.transitionIn)?.type ?? 'none')}
+          badge={(clip.transitionOut ?? clip.transitionIn)?.type ?? undefined}
+        >
           <div className="ctl">
-            <label style={{ width: 76 }}>Type</label>
+            <label style={{ width: 76 }}>Soort</label>
             <select
               value={(clip.transitionOut ?? clip.transitionIn)?.type ?? transType}
               onChange={(e) => {
@@ -712,7 +765,7 @@ export default function Inspector(): JSX.Element {
             </select>
           </div>
           <div className="ctl">
-            <label style={{ width: 76 }}>Duration</label>
+            <label style={{ width: 76 }}>Duur</label>
             <input
               type="range"
               min={0.1}
@@ -735,34 +788,34 @@ export default function Inspector(): JSX.Element {
                 const duration = (clip.transitionOut ?? clip.transitionIn)?.duration ?? transDur
                 addTransition(clip.id, type, duration)
               }}
-              title="Apply transition"
-              data-tooltip="Apply transition"
+              title="Overgang toepassen"
+              data-tooltip="Overgang toepassen"
             >
-              Apply
+              Toepassen
             </button>
             {(clip.transitionOut || clip.transitionIn) && (
-              <button onClick={() => clearTransition(clip.id)} title="Remove transition" data-tooltip="Remove transition">
-                Remove
+              <button onClick={() => clearTransition(clip.id)} title="Overgang weghalen" data-tooltip="Overgang weghalen">
+                Weghalen
               </button>
             )}
           </div>
           <div className="panel-section-title">
             {clip.kind === 'audio'
-              ? nextClip ? 'Audio crossfade with next on this track' : 'Fade in/out on this audio clip'
+              ? nextClip ? 'Audio-crossfade met het volgende clipje op deze track' : 'In- en uitfaden op dit audioclip'
               : OVERLAP_TRANSITIONS.has((clip.transitionOut ?? clip.transitionIn)?.type ?? 'crossfade')
                 ? nextClip
-                  ? 'Overlaps next clip on this track'
-                  : 'No next clip — place one to overlap'
+                  ? 'Overlapt het volgende clipje op deze track'
+                  : 'Geen volgend clipje — plaats er één om te overlappen'
                 : nextClip
-                  ? 'Fade before next clip'
-                  : 'Fade only (no next clip needed)'}
+                  ? 'Fadt weg vóór het volgende clipje'
+                  : 'Alleen faden (volgend clipje niet nodig)'}
           </div>
           {(clip.transitionOut || clip.transitionIn) && (
             <div className="ai-hint">
               Active: {(clip.transitionOut ?? clip.transitionIn)!.type} · {(clip.transitionOut ?? clip.transitionIn)!.duration.toFixed(1)}s
             </div>
           )}
-        </div>
+        </Section>
       </div>
     </aside>
   )
