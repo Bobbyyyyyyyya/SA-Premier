@@ -1,14 +1,41 @@
-import type { Asset } from '../../../shared/types'
+import type { Asset, AudioEffects } from '../../../shared/types'
+import { DEFAULT_AUDIO_EFFECTS } from '../../../shared/types'
 import { mediaUrl } from './mediaUrl'
 import { clamp } from './format'
+
+/**
+ * Web Audio-keten voor één clip:
+ *   source → low → mid → high → compressor → ┬→ dry ──────────┐
+ *                                             └→ convolver → wet ┴→ out → speakers
+ *
+ * De grafiek wordt alleen aangelegd als er audio-effecten staan; zonder
+ * effecten blijft het native element-volume in gebruik (geen AudioContext,
+ * geen kans op regressies). Let op: zodra een element aan een
+ * MediaElementSource hangt, negeert Chromium el.volume — vanaf dat moment
+ * loopt het volume via `out`.
+ */
+interface AudioGraph {
+  src: MediaElementAudioSourceNode
+  low: BiquadFilterNode
+  mid: BiquadFilterNode
+  high: BiquadFilterNode
+  comp: DynamicsCompressorNode
+  dry: GainNode
+  wet: GainNode
+  conv: ConvolverNode
+  out: GainNode
+}
 
 export type PlayerElement = HTMLMediaElement | HTMLImageElement
 
 export class PlayerManager {
   private els = new Map<string, PlayerElement>()
+  private graphs = new Map<string, AudioGraph>()
   private container: HTMLDivElement
   private masterVolume = 1
   private masterMuted = false
+  private ctx: AudioContext | null = null
+  private ir: AudioBuffer | null = null
 
   constructor() {
     this.container = document.createElement('div')
@@ -21,10 +48,11 @@ export class PlayerManager {
     this.masterVolume = clamp(volume, 0, 1)
     this.masterMuted = muted
     // pas direct toe op alle bestaande elementen
-    for (const el of this.els.values()) {
+    for (const [id, el] of this.els) {
       if (el instanceof HTMLMediaElement) {
         const base = (el as HTMLMediaElement & { _clipVol?: number })._clipVol ?? 1
         this.applyVolume(el, base, (el as HTMLMediaElement & { _trackMuted?: boolean })._trackMuted ?? false)
+        void id
       }
     }
   }
@@ -39,8 +67,136 @@ export class PlayerManager {
     const previewVol = clamp(effClip, 0, 1) * this.masterVolume
     ;(el as HTMLMediaElement & { _clipVol?: number })._clipVol = clipVolume
     ;(el as HTMLMediaElement & { _trackMuted?: boolean })._trackMuted = trackMuted
+    const silent = trackMuted || this.masterMuted || effClip <= 0.001
+    const graph = this.graphs.get(this.clipIdOf(el))
+    if (graph) {
+      // volume loopt nu via de grafiek; el.volume wordt door Chromium genegeerd
+      graph.out.gain.value = silent ? 0 : clamp(previewVol, 0, 1)
+      el.volume = 1
+      el.muted = false
+      return
+    }
     el.volume = clamp(previewVol, 0, 1)
-    el.muted = trackMuted || this.masterMuted || effClip <= 0.001
+    el.muted = silent
+  }
+
+  private clipIdOf(el: PlayerElement): string {
+    for (const [id, x] of this.els) if (x === el) return id
+    return ''
+  }
+
+  /** AudioContext pas aanmaken als er echt iets te horen valt te krijgen. */
+  private ensureCtx(): AudioContext | null {
+    if (this.ctx) return this.ctx
+    try {
+      const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+      if (!Ctor) return null
+      this.ctx = new Ctor()
+      // browsers laten de context pas starten na een gebruikersgebaar
+      void this.ctx.resume().catch(() => null)
+    } catch {
+      this.ctx = null
+    }
+    return this.ctx
+  }
+
+  /** Synthetische ruimte-impuls (aflopende ruis) — goedkoop en klinkt als een zaal. */
+  private reverbIR(ctx: AudioContext): AudioBuffer {
+    if (this.ir) return this.ir
+    const len = Math.floor(ctx.sampleRate * 1.6)
+    const buf = ctx.createBuffer(2, len, ctx.sampleRate)
+    for (let ch = 0; ch < 2; ch++) {
+      const d = buf.getChannelData(ch)
+      for (let i = 0; i < len; i++) {
+        d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.4)
+      }
+    }
+    this.ir = buf
+    return buf
+  }
+
+  private buildGraph(clipId: string, el: HTMLMediaElement, ctx: AudioContext): AudioGraph {
+    const src = ctx.createMediaElementSource(el)
+    const low = ctx.createBiquadFilter()
+    low.type = 'lowshelf'
+    low.frequency.value = 200
+    const mid = ctx.createBiquadFilter()
+    mid.type = 'peaking'
+    mid.frequency.value = 1000
+    mid.Q.value = 0.9
+    const high = ctx.createBiquadFilter()
+    high.type = 'highshelf'
+    high.frequency.value = 3500
+    const comp = ctx.createDynamicsCompressor()
+    comp.knee.value = 12
+    comp.attack.value = 0.006
+    comp.release.value = 0.22
+    const dry = ctx.createGain()
+    const wet = ctx.createGain()
+    const conv = ctx.createConvolver()
+    conv.buffer = this.reverbIR(ctx)
+    const out = ctx.createGain()
+    src.connect(low)
+    low.connect(mid)
+    mid.connect(high)
+    high.connect(comp)
+    comp.connect(dry)
+    comp.connect(conv)
+    conv.connect(wet)
+    dry.connect(out)
+    wet.connect(out)
+    out.connect(ctx.destination)
+    const g: AudioGraph = { src, low, mid, high, comp, dry, wet, conv, out }
+    this.graphs.set(clipId, g)
+    // bestaand volume overzetten
+    const prev = el as HTMLMediaElement & { _clipVol?: number; _trackMuted?: boolean }
+    this.applyVolume(el, prev._clipVol ?? 1, prev._trackMuted ?? false)
+    return g
+  }
+
+  /**
+   * Zet de audio-effecten van een clip. Wordt aangeroepen bij elke
+   * clips-wijziging; is er niets aan, dan blijft het element onaangeroerd.
+   */
+  setAudioEffects(clipId: string, fx: AudioEffects | undefined): void {
+    const el = this.els.get(clipId)
+    if (!(el instanceof HTMLMediaElement)) return
+    const neutral = !fx || !(
+      Math.abs(fx.eqLow) > 0.01 || Math.abs(fx.eqMid) > 0.01 || Math.abs(fx.eqHigh) > 0.01 ||
+      fx.compressor > 0.01 || fx.noiseReduction > 0.01 || fx.reverb > 0.01
+    )
+    let g = this.graphs.get(clipId)
+    if (neutral) {
+      if (!g) return
+      g.low.gain.value = 0
+      g.mid.gain.value = 0
+      g.high.gain.value = 0
+      g.comp.threshold.value = 0
+      g.comp.ratio.value = 1
+      g.dry.gain.value = 1
+      g.wet.gain.value = 0
+      return
+    }
+    const ctx = this.ensureCtx()
+    if (!ctx) return
+    try {
+      if (!g) g = this.buildGraph(clipId, el, ctx)
+    } catch {
+      return // geen audio-device/grafiek: preview valt terug op element-volume
+    }
+    const clampDb = (v: number): number => clamp(v, -12, 12)
+    g.low.gain.value = clampDb(fx.eqLow)
+    g.mid.gain.value = clampDb(fx.eqMid)
+    g.high.gain.value = clampDb(fx.eqHigh)
+    const c = clamp(fx.compressor, 0, 1)
+    g.comp.threshold.value = -6 - 34 * c
+    g.comp.ratio.value = 1 + 11 * c
+    const r = clamp(fx.reverb, 0, 1)
+    g.wet.gain.value = r * 0.55
+    g.dry.gain.value = 1 - r * 0.25
+    // ruisreductie heeft geen eerlijke Web Audio-tegenhanger: hoogstens een
+    // highpass als het om geroezel gaat, en dat is iets anders. Bewust niets.
+    void DEFAULT_AUDIO_EFFECTS
   }
 
   element(clipId: string, asset: Asset, kind?: string): PlayerElement {
@@ -161,6 +317,11 @@ export class PlayerManager {
   }
 
   removeClip(clipId: string): void {
+    const g = this.graphs.get(clipId)
+    if (g) {
+      try { g.out.disconnect() } catch { /* ignore */ }
+      this.graphs.delete(clipId)
+    }
     const el = this.els.get(clipId)
     if (el) {
       if (el instanceof HTMLMediaElement) {

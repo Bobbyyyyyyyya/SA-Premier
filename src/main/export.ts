@@ -134,6 +134,41 @@ function timemarkToSeconds(tm: string): number {
   return (m[1] ? +m[1] * 3600 : 0) + +m[2] * 60 + +m[3]
 }
 
+/**
+ * Bouwt de ffmpeg-filterketen voor de audio-effecten van een clip.
+ *
+ * Volgorde: EQ → ruisreductie → compressor → reverb — dezelfde volgorde als de
+ * preview-grafiek, zodat wat je hoort overeenkomt met de export. Ruisreductie
+ * bestáát alleen hier: Web Audio heeft geen eerlijke counterpart, dus die slider
+ * doet in de preview niets en staat daarom als "alleen export" gelabeld.
+ */
+function audioFilterChain(fx: Clip['audioFx']): string {
+  if (!fx) return ''
+  const out: string[] = []
+  const db = (v: number): number => Math.max(-12, Math.min(12, v))
+  if (Math.abs(fx.eqLow) > 0.01) out.push(`equalizer=f=200:t=q:w=1:g=${db(fx.eqLow).toFixed(2)}`)
+  if (Math.abs(fx.eqMid) > 0.01) out.push(`equalizer=f=1000:t=q:w=0.9:g=${db(fx.eqMid).toFixed(2)}`)
+  if (Math.abs(fx.eqHigh) > 0.01) out.push(`equalizer=f=3500:t=q:w=1:g=${db(fx.eqHigh).toFixed(2)}`)
+  if (fx.noiseReduction > 0.01) {
+    const nr = Math.max(0, Math.min(1, fx.noiseReduction))
+    out.push(`afftdn=nr=${(6 + 24 * nr).toFixed(1)}:nf=-45`)
+  }
+  if (fx.compressor > 0.01) {
+    const c = Math.max(0, Math.min(1, fx.compressor))
+    // LET OP: acompressor threshold is LINEAR (0.000976..1), geen dB zoals bij
+    // Web Audio. Zelfde dB-instelling, dus omrekenen: 10^(dB/20)
+    const thresholdDb = -6 - 34 * c
+    const thresholdLin = Math.pow(10, thresholdDb / 20)
+    out.push(`acompressor=threshold=${thresholdLin.toFixed(6)}:ratio=${(1 + 11 * c).toFixed(2)}:attack=6:release=220`)
+  }
+  if (fx.reverb > 0.01) {
+    // twee aecho-taps met een kleine delay: korte, dichte ruimte i.p.v. duidelijk echo
+    out.push('aecho=0.8:0.85:55:0.35')
+    out.push('aecho=0.8:0.5:113:0.25')
+  }
+  return out.join(',')
+}
+
 function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: number } {
   needFfmpeg()
   const { outPath, width, height, fps } = req
@@ -198,6 +233,10 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
       } else {
         const al = 'a' + c.id
         const af: string[] = []
+        // audio-effecten (EQ / compressor / ruisreductie / reverb) — voordat de
+        // fades erin, want die moeten op de 'droge' mix werken
+        const fx = audioFilterChain(c.audioFx)
+        if (fx) af.push(fx)
         if (c.transitionIn) {
           af.push(`afade=t=in:st=0:d=${n(c.transitionIn.duration)}`)
         }

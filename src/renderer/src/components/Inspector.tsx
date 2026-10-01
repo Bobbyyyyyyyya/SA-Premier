@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useEditorStore } from '../store'
 import SubtitlePanel from './SubtitlePanel'
-import { CAPTION_PRESETS } from '../../../shared/types'
+import { CAPTION_PRESETS, DEFAULT_AUDIO_EFFECTS, hasAudioFx } from '../../../shared/types'
 import { formatTime } from '../lib/format'
 import { importPaths } from '../lib/inspect'
 import type { ClipEffects, TextAnim, TextData, TransitionType } from '../../../shared/types'
@@ -625,10 +625,15 @@ export default function Inspector(): JSX.Element {
   }
 
   const fx = clip.effects
+  const setClipAudioFx = useEditorStore((s) => s.setClipAudioFx)
+  const resetTrackAudioFx = useEditorStore((s) => s.resetTrackAudioFx)
   const setFx = (patch: Partial<ClipEffects>): void => updateClip(clip.id, { effects: { ...fx, ...patch } })
   const resetFx = (): void => updateClip(clip.id, { effects: { ...DEFAULT_EFFECTS } })
   // badge 'aangepast' zodat je in de lijst ziet dát er iets staat zonder alles open te klappen
   const fxActive = Object.values(fx).some((v) => Math.abs(v) > 0.001)
+  const afx = clip.audioFx ?? DEFAULT_AUDIO_EFFECTS
+  const setAfx = (patch: Partial<typeof afx>): void => setClipAudioFx(clip.id, patch)
+  const afxActive = hasAudioFx(afx)
 
   const nextClip = clips
     .filter((c) => c.trackId === clip.trackId && c.id !== clip.id && c.start >= clip.start + clip.duration - 0.05)
@@ -719,6 +724,96 @@ export default function Inspector(): JSX.Element {
             <div className="ai-hint">Tip: na extractie staat het geluid op de audiotrack en wordt de video zelf stil — anders dubbel geluid.</div>
           </Section>
         )}
+
+        <Section title="Audio-effecten" defaultOpen={false} badge={afxActive ? 'aangepast' : undefined}>
+          <div className="fx-group">
+            <div className="fx-group-title">Equalizer</div>
+            <Slider
+              label="Laag (200 Hz)"
+              scale={1}
+              value={afx.eqLow}
+              min={-12}
+              max={12}
+              step={0.5}
+              bipolar
+              unit=" dB"
+              onChange={(v) => setAfx({ eqLow: v })}
+            />
+            <Slider
+              label="Midden (1 kHz)"
+              scale={1}
+              value={afx.eqMid}
+              min={-12}
+              max={12}
+              step={0.5}
+              bipolar
+              unit=" dB"
+              onChange={(v) => setAfx({ eqMid: v })}
+            />
+            <Slider
+              label="Hoog (3,5 kHz)"
+              scale={1}
+              value={afx.eqHigh}
+              min={-12}
+              max={12}
+              step={0.5}
+              bipolar
+              unit=" dB"
+              onChange={(v) => setAfx({ eqHigh: v })}
+            />
+          </div>
+          <div className="fx-group">
+            <div className="fx-group-title">Dynamiek &amp; ruimte</div>
+            <Slider
+              label="Compressor"
+              value={afx.compressor}
+              min={0}
+              max={1}
+              step={0.01}
+              unit="%"
+              onChange={(v) => setAfx({ compressor: v })}
+            />
+            <Slider
+              label="Ruimte (reverb)"
+              value={afx.reverb}
+              min={0}
+              max={1}
+              step={0.01}
+              unit="%"
+              onChange={(v) => setAfx({ reverb: v })}
+            />
+            <Slider
+              label="Ruisreductie"
+              value={afx.noiseReduction}
+              min={0}
+              max={1}
+              step={0.01}
+              unit="%"
+              onChange={(v) => setAfx({ noiseReduction: v })}
+            />
+            <div className="ai-hint" style={{ marginTop: 6 }}>
+              Eq, compressor en reverb hoor je meteen in de preview. Ruisreductie werkt alleen in de
+              export — Web Audio heeft daar geen eerlijke equivalent voor.
+            </div>
+          </div>
+          <div className="btn-row">
+            <button
+              onClick={() => setClipAudioFx(clip.id, {})}
+              title="Audio-effecten en volume terugzetten"
+              data-tooltip="Audio-effecten en volume terugzetten"
+            >
+              Alles terug
+            </button>
+            <button
+              className="ghost"
+              onClick={() => resetTrackAudioFx(clip.trackId)}
+              title="Reset alle clips op deze track"
+              data-tooltip="Reset alle clips op deze track"
+            >
+              Hele track resetten
+            </button>
+          </div>
+        </Section>
 
         <Section title="Beeld-effecten" defaultOpen={false} badge={fxActive ? 'aangepast' : undefined}>
           <div className="fx-group">

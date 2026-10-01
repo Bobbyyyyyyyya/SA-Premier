@@ -48,13 +48,43 @@ export default function PreviewPlayer(): JSX.Element {
     })
   }, [])
 
+  /**
+   * Bij het openen van een opgeslagen project moeten de media-elementen meteen
+   * klaarstaan, anders blijft de preview zwart totdat je speelt of scrubt: de
+   * elementen werden alleen aangemaakt vanuit de state-abonneerder, en die
+   * vuurt bij het laden niets af. Dus één keer prime'en.
+   */
   useEffect(() => {
     const c = canvasRef.current
     if (!c) return
     c.width = project.width
     c.height = project.height
     ctxRef.current = c.getContext('2d')
-    renderFrameAt(useEditorStore.getState().playhead)
+    const state = useEditorStore.getState()
+    const players = playersRef.current
+    if (players) {
+      for (const clip of state.clips) {
+        if (clip.kind === 'text') continue
+        const asset = state.assets.find((a) => a.id === clip.assetId)
+        const track = state.tracks.find((x) => x.id === clip.trackId)
+        if (!asset) continue
+        players.element(clip.id, asset, clip.kind)
+        players.setAudioEffects(clip.id, clip.audioFx)
+        players.seekTo(clip.id, clip.start, clip.duration, clip.sourceStart, state.playhead, clip.volume * clipAudioGain(clip, state.playhead), track?.muted ?? false)
+      }
+      // eerste frame zodra het element data heeft (seeked of al klaar)
+      const vis = state.clips.find((cl) => cl.kind !== 'text' && state.playhead >= cl.start && state.playhead < cl.start + cl.duration)
+      if (vis) {
+        const a = state.assets.find((x) => x.id === vis.assetId)
+        if (a) {
+          const el = players.element(vis.id, a, vis.kind)
+          if (el instanceof HTMLMediaElement && el.readyState < 2) {
+            el.addEventListener('loadeddata', () => renderFrameAt(state.playhead), { once: true })
+          }
+        }
+      }
+    }
+    renderFrameAt(state.playhead)
   }, [project.width, project.height, renderFrameAt])
 
   // playhead-tekst zonder React re-render elke 16ms (lag fix)
@@ -163,6 +193,9 @@ export default function PreviewPlayer(): JSX.Element {
           const asset = s.assets.find((a) => a.id === clip.assetId)
           const track = s.tracks.find((x) => x.id === clip.trackId)
           if (asset) players.element(clip.id, asset, clip.kind)
+          // EQ/compressor/reverb volgen de clip; zonder effecten blijft het
+          // native element-volume in gebruik
+          players.setAudioEffects(clip.id, clip.audioFx)
           players.seekTo(clip.id, clip.start, clip.duration, clip.sourceStart, s.playhead, clip.volume * clipAudioGain(clip, s.playhead), track?.muted ?? false)
         }
         const vis = s.clips.find((c) => c.kind !== 'text' && s.playhead >= c.start && s.playhead < c.start + c.duration)

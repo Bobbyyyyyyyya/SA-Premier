@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import type {
   Asset,
+  AudioEffects,
   CaptionPreset,
   CaptionWordMode,
   Clip,
@@ -12,7 +13,7 @@ import type {
   TrackKind,
   TransitionType
 } from '../../shared/types'
-import { CAPTION_PRESETS, DEFAULT_EFFECTS, TEXT_PRESETS, sanitizeCaptionText, uid } from '../../shared/types'
+import { CAPTION_PRESETS, DEFAULT_AUDIO_EFFECTS, DEFAULT_EFFECTS, TEXT_PRESETS, sanitizeCaptionText, uid } from '../../shared/types'
 
 export interface EditorState {
   project: { name: string; width: number; height: number; fps: number }
@@ -38,6 +39,10 @@ export interface EditorState {
   setProjectName: (name: string) => void
 
   addClip: (assetId: string, trackId: string, start: number) => void
+  /** Audio-effecten van één clip (EQ/compressor/reverb) — ook volume, in één klap. */
+  setClipAudioFx: (clipId: string, patch: Partial<AudioEffects>) => void
+  /** Alles audio op één track resetten (handig na een experiment). */
+  resetTrackAudioFx: (trackId: string) => void
   /** Haalt echt de audiotrack uit een video en zet die als clip op een audiotrack. */
   extractAudioToTrack: (assetId: string, sourceClipId?: string) => Promise<ExtractAudioResult>
   addTextClip: (trackId: string, start: number, text: Partial<TextData>) => void
@@ -602,6 +607,24 @@ export const useEditorStore = create<EditorState>()(
       }
       set((st) => ({ clips: [...st.clips, clip], selectedClipId: clip.id }))
       return { ok: true, clipId: clip.id, assetId: newAsset.id, outPath: newAsset.path, trackId }
+    },
+
+    setClipAudioFx: (clipId, patch) => {
+      set((s) => ({
+        clips: s.clips.map((c) =>
+          c.id === clipId
+            ? { ...c, audioFx: { ...DEFAULT_AUDIO_EFFECTS, ...(c.audioFx ?? {}), ...patch } }
+            : c
+        )
+      }))
+    },
+
+    resetTrackAudioFx: (trackId) => {
+      set((s) => ({
+        clips: s.clips.map((c) =>
+          c.trackId === trackId ? { ...c, audioFx: { ...DEFAULT_AUDIO_EFFECTS }, volume: 1 } : c
+        )
+      }))
     },
 
     addTextClip: (trackId, start, text) => {

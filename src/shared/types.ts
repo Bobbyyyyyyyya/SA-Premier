@@ -769,6 +769,8 @@ export interface Clip {
    * preview/export dat de video zelf al stil moet zijn — anders dubbel geluid.
    */
   extractedFromAssetId?: string
+  /** EQ / compressor / ruisreductie / reverb op dit clipje (audio én video) */
+  audioFx?: AudioEffects
 }
 
 export interface Project {
@@ -801,6 +803,50 @@ export interface ExportStartResult {
   cancelled?: boolean
   error?: string
   outPath?: string
+}
+
+/**
+ * Audio-effecten per clip. Bewust klein en duidelijk: drie EQ-banden,
+ * compressie, ruisreductie en reverb.
+ *
+ * Preview-ondersteuning staat in het commentaar per veld — liever een eerlijke
+ * "alleen bij export" dan een schuiver die in de preview niets doet.
+ */
+export interface AudioEffects {
+  /** low shelf, dB (-12..12) · preview: lowshelf */
+  eqLow: number
+  /** peaking @1 kHz, dB (-12..12) · preview: peaking */
+  eqMid: number
+  /** high shelf, dB (-12..12) · preview: highshelf */
+  eqHigh: number
+  /** 0..1 · preview: DynamicsCompressor */
+  compressor: number
+  /** 0..1 · ALLEEN bij export (ffmpeg afftdn) — geen eerlijke preview in Web Audio */
+  noiseReduction: number
+  /** 0..1 · preview: ConvolverNode met synthetische ruimte-impuls */
+  reverb: number
+}
+
+export const DEFAULT_AUDIO_EFFECTS: AudioEffects = {
+  eqLow: 0,
+  eqMid: 0,
+  eqHigh: 0,
+  compressor: 0,
+  noiseReduction: 0,
+  reverb: 0
+}
+
+/** Heeft dit clipje audio-effecten (dus: is er iets om te renderen)? */
+export function hasAudioFx(fx: AudioEffects | undefined): boolean {
+  if (!fx) return false
+  return (
+    Math.abs(fx.eqLow) > 0.01 ||
+    Math.abs(fx.eqMid) > 0.01 ||
+    Math.abs(fx.eqHigh) > 0.01 ||
+    fx.compressor > 0.01 ||
+    fx.noiseReduction > 0.01 ||
+    fx.reverb > 0.01
+  )
 }
 
 export const DEFAULT_EFFECTS: ClipEffects = {
