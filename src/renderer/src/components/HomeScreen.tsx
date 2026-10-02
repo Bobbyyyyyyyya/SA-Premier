@@ -128,7 +128,22 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
             <span className="home-hint">Meerdere video’s die je importeert komen in <b>één</b> project (één timeline), niet als losse projecten.</span>
           </div>
           {hasProject ? (
-            <div className="project-card">
+            /* De hele kaart opent de timeline — klikken op de kaart zelf moet
+               werken, niet alleen op de knop ernaast. */
+            <div
+              className="project-card project-card--clickable"
+              role="button"
+              tabIndex={0}
+              onClick={onOpen}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  onOpen()
+                }
+              }}
+              title="Open de timeline"
+              data-tooltip="Open de timeline"
+            >
               <div className="project-thumb" style={assets[0]?.thumbnail ? { backgroundImage: `url(${assets[0].thumbnail})` } : assets[0] ? { backgroundImage: `url(${mediaUrl(assets[0].path)})` } : {}}>
                 {!assets[0]?.thumbnail && !assets[0] && <span className="project-thumb-placeholder">Geen media</span>}
                 <div className="project-thumb-overlay">
@@ -151,11 +166,19 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
               </div>
               <div className="project-actions">
                 <button className="primary" onClick={onOpen} title="Open timeline →" data-tooltip="Open timeline →">Open timeline →</button>
-                <button className="ghost" onClick={async () => {
-                  if (!window.confirm('Project legen?')) return
-                  useEditorStore.getState().resetProject()
-                  void refresh()
-                }} title="Legen" data-tooltip="Legen">Legen</button>
+                <button
+                  className="ghost"
+                  onClick={async (e) => {
+                    e.stopPropagation()
+                    if (!window.confirm('Project legen?')) return
+                    useEditorStore.getState().resetProject()
+                    void refresh()
+                  }}
+                  title="Legen"
+                  data-tooltip="Legen"
+                >
+                  Legen
+                </button>
               </div>
             </div>
           ) : (

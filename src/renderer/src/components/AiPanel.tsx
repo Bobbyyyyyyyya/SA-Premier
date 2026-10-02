@@ -389,7 +389,12 @@ export default function AiPanel(): JSX.Element {
   const addResultAudio = async (): Promise<void> => {
     if (!beatResult?.base64 || !beatResult.name) return
     const r = await window.api.aiStoreAudio(beatResult.base64, beatResult.name)
-    if (r.ok && r.path) await importPaths([r.path], { place: false })
+    if (r.ok && r.path) {
+      // place: true → het geluid komt direct als clip op een audiotrack (op de
+      // playhead), niet alleen in de bibliotheek. Anders zie je "klaar" maar
+      // geen track.
+      await importPaths([r.path], { place: true })
+    }
   }
 
   const downloadResultAudio = async (): Promise<void> => {
@@ -1018,7 +1023,9 @@ export default function AiPanel(): JSX.Element {
             />
             <div className="ai-hint">Preview — als je stilte hoort, probeer prompt te wijzigen of BPM/length aan te passen.</div>
             <div className="btn-row" style={{ marginTop: 8 }}>
-              <button onClick={addResultAudio} title="Add to library" data-tooltip="Add to library">Add to library</button>
+              <button onClick={addResultAudio} title="Zet het nummer als clip op een audiotrack" data-tooltip="Zet op de timeline">
+                Zet op timeline
+              </button>
               <button onClick={downloadResultAudio} title="Download" data-tooltip="Download">Download</button>
             </div>
           </>

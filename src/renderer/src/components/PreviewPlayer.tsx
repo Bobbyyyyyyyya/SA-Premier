@@ -14,6 +14,7 @@ export default function PreviewPlayer(): JSX.Element {
   const [masterVol, setMasterVol] = useState(1)
   const [masterMuted, setMasterMuted] = useState(false)
   const [draggingSubs, setDraggingSubs] = useState(false)
+  const [previewMsg, setPreviewMsg] = useState<string | null>(null)
   const subDragRef = useRef<{ x: number; y: number } | null>(null)
   const hasSubtitles = useEditorStore((s) => s.clips.some((c) => c.subtitle))
 
@@ -46,6 +47,39 @@ export default function PreviewPlayer(): JSX.Element {
       state,
       players
     })
+  }, [])
+
+  /**
+   * Zelfdiagnose voor de preview. Een zwarte doos zegt niets; hierbij zie je
+   * wél of het beeld laadt, of dat het bestand ontbreekt/niet decodeert.
+   */
+  useEffect(() => {
+    const t = setInterval(() => {
+      const st = useEditorStore.getState()
+      const vis = st.clips.find((c) => c.kind !== 'text' && st.playhead >= c.start && st.playhead < c.start + c.duration)
+      if (!vis) {
+        setPreviewMsg(null)
+        return
+      }
+      const asset = st.assets.find((a) => a.id === vis.assetId)
+      if (!asset) {
+        setPreviewMsg('Media ontbreekt in het project')
+        return
+      }
+      const el = playersRef.current?.element(vis.id, asset, vis.kind)
+      if (!(el instanceof HTMLMediaElement)) {
+        setPreviewMsg(null)
+        return
+      }
+      if (el.error) {
+        setPreviewMsg(`Kan beeld niet laden: ${el.error.message || 'decoderingsfout'}`)
+      } else if (el.readyState < 2) {
+        setPreviewMsg('Beeld laden…')
+      } else {
+        setPreviewMsg(null)
+      }
+    }, 600)
+    return () => clearInterval(t)
   }, [])
 
   /**
@@ -259,6 +293,7 @@ export default function PreviewPlayer(): JSX.Element {
   return (
     <section className="preview-pane">
       <div className="preview-stage">
+        {previewMsg && <div className="preview-msg">{previewMsg}</div>}
         <canvas
           ref={canvasRef}
           className={`preview-canvas ${hasSubtitles ? 'can-drag-subs' : ''} ${draggingSubs ? 'dragging-subs' : ''}`}
