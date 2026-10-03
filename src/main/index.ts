@@ -125,9 +125,16 @@ function registerIpc(): void {
 
   ipcMain.handle('export-video', async (event, req: ExportRequest) => {
     const win = BrowserWindow.fromWebContents(event.sender)
+    const audioOnly = req.mode === 'audio'
     const res = await dialog.showSaveDialog(win!, {
-      defaultPath: `${req.project.name || 'SA Premier'}.mp4`,
-      filters: [{ name: 'MP4 Video', extensions: ['mp4'] }]
+      defaultPath: `${req.project.name || 'SA Premier'}.${audioOnly ? 'wav' : 'mp4'}`,
+      filters: audioOnly
+        ? [
+            { name: 'WAV Audio', extensions: ['wav'] },
+            { name: 'MP3 Audio', extensions: ['mp3'] },
+            { name: 'M4A Audio', extensions: ['m4a'] }
+          ]
+        : [{ name: 'MP4 Video', extensions: ['mp4'] }]
     })
     if (res.canceled || !res.filePath) return { cancelled: true }
     try {

@@ -789,6 +789,8 @@ export interface ExportRequest {
   width: number
   height: number
   fps: number
+  /** wat er geëxporteerd wordt: met zowel beeld als geluid, of eruit gelaten */
+  mode?: 'both' | 'video' | 'audio'
 }
 
 export interface ExportProgress {

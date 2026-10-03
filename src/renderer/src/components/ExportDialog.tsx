@@ -29,6 +29,7 @@ export default function ExportDialog({ open, onClose }: { open: boolean; onClose
   const [fmtIdx, setFmtIdx] = useState(1)
   const [fps, setFps] = useState(30)
   const [customFps, setCustomFps] = useState('')
+  const [mode, setMode] = useState<'both' | 'video' | 'audio'>('both')
   const [progress, setProgress] = useState<ExportProgress | null>(null)
   const [outPath, setOutPath] = useState('')
 
@@ -75,7 +76,8 @@ export default function ExportDialog({ open, onClose }: { open: boolean; onClose
       outPath: '',
       width: fmt.w,
       height: fmt.h,
-      fps: effFps
+      fps: effFps,
+      mode
     }
     setProgress({ phase: 'progress', percent: 0 })
     const res = await window.api.exportVideo(req)
@@ -105,6 +107,27 @@ export default function ExportDialog({ open, onClose }: { open: boolean; onClose
 
         {!done && !running && (
           <>
+            <div className="field">
+              <label>Wat exporteren</label>
+              <div className="seg">
+                {([
+                  ['both', 'Video + audio'],
+                  ['video', 'Alleen video'],
+                  ['audio', 'Alleen audio']
+                ] as const).map(([id, label]) => (
+                  <button
+                    key={id}
+                    className={mode === id ? 'active' : ''}
+                    onClick={() => setMode(id)}
+                    title={id === 'both' ? 'Beeld en geluid (mp4)' : id === 'video' ? 'Zonder audiotrack' : 'Alleen het geluid (wav/mp3/m4a)'}
+                    data-tooltip={id === 'both' ? 'Video + audio' : id === 'video' ? 'Alleen video' : 'Alleen audio'}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="field">
               <label>Resolutie</label>
               <select value={fmtIdx} onChange={(e) => setFmtIdx(+e.target.value)}>
@@ -143,8 +166,14 @@ export default function ExportDialog({ open, onClose }: { open: boolean; onClose
             <div className="modal-actions">
               <div className="spacer" />
               <button onClick={onClose} title="Sluiten" data-tooltip="Sluiten">Sluiten</button>
-              <button className="primary" onClick={start} disabled={!assets.length || !fpsValid} title="Export MP4" data-tooltip="Export MP4">
-                Export MP4
+              <button
+                className="primary"
+                onClick={start}
+                disabled={!assets.length || !fpsValid}
+                title={mode === 'audio' ? 'Exporteer als audiobestand' : 'Exporteer als MP4'}
+                data-tooltip={mode === 'audio' ? 'Exporteer als audiobestand' : 'Exporteer als MP4'}
+              >
+                {mode === 'audio' ? 'Exporteer audio' : 'Export MP4'}
               </button>
             </div>
           </>

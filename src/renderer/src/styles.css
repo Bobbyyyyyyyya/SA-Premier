@@ -2483,3 +2483,33 @@ input:not([type]):focus {
   z-index: 5;
 }
 .preview-stage { position: relative; }
+
+/* exportdialoog: moduskeuze */
+.seg {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+.seg button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 6px 4px;
+  font-size: 11px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.seg button:hover { color: var(--text); background: rgba(255, 255, 255, 0.05); }
+.seg button.active {
+  color: #1a120a;
+  background: linear-gradient(180deg, #ff9250, #ff7f2a);
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(255, 127, 42, 0.25);
+}

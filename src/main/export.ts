@@ -174,6 +174,8 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
   const { outPath, width, height, fps } = req
   const { tracks, clips } = req.project
   const assets = new Map(req.assets.map((a) => [a.path, a]))
+  // 'video' laat alleen het geluid weg, 'audio' alleen het beeld
+  const mode = req.mode ?? 'both'
 
   const inputPaths: string[] = []
   for (const c of clips) {
@@ -201,7 +203,7 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
     if (!asset) continue
     const idx = inIdx(c.assetPath)
 
-    if (c.kind === 'video') {
+    if (mode !== 'audio' && c.kind === 'video') {
       const lbl = 'c' + c.id
       const fx: string[] = []
       fx.push(`trim=start=${n(c.sourceStart)}:end=${n(c.sourceStart + c.duration)}`)
@@ -226,7 +228,7 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
       trackSegs.set(c.trackId, segs)
     }
 
-    if (asset.hasAudio) {
+    if (mode !== 'video' && asset.hasAudio) {
       // voorkom dubbel geluid: video met eigen audio-clip die overlapt → alleen die telt
       if (hasSeparateAudioClip(c, clips)) {
         // skip: audio komt via de aparte audio-clip
@@ -255,6 +257,8 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
     }
   }
 
+  // bij 'alleen audio' geen videoketen: geen [vout], geen tekst-overlays
+  if (mode !== 'audio') {
   const videoTracks = tracks.filter(
     (t) => t.kind === 'video' && (trackSegs.get(t.id)?.length ?? 0) > 0
   )
@@ -480,6 +484,7 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
       }
     })
   }
+  }
 
   let hasAudio = false
   if (audioLabels.length) {
@@ -499,15 +504,26 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
     if (IMAGE_INPUT.test(p)) cmd.loop()
   }
   cmd.complexFilter(graph)
-  cmd.outputOptions([
-    '-c:v', 'libx264',
-    '-pix_fmt', 'yuv420p',
-    '-preset', 'medium',
-    '-movflags', '+faststart'
-  ])
-  if (hasAudio) cmd.outputOptions(['-c:a', 'aac', '-b:a', '192k'])
+  if (mode !== 'audio') {
+    cmd.outputOptions([
+      '-c:v', 'libx264',
+      '-pix_fmt', 'yuv420p',
+      '-preset', 'medium',
+      '-movflags', '+faststart'
+    ])
+  }
+  if (hasAudio) {
+    // alleen-audio: codec kiezen op de extensie van het gekozen bestand
+    if (mode === 'audio') {
+      if (/\.mp3$/i.test(outPath)) cmd.outputOptions(['-c:a', 'libmp3lame', '-b:a', '192k'])
+      else if (/\.m4a$/i.test(outPath)) cmd.outputOptions(['-c:a', 'aac', '-b:a', '192k'])
+      else cmd.outputOptions(['-c:a', 'pcm_s16le', '-ar', '44100', '-ac', '2'])
+    } else {
+      cmd.outputOptions(['-c:a', 'aac', '-b:a', '192k'])
+    }
+  }
   cmd.output(outPath)
-  cmd.map(textClips.length ? '[vout2]' : '[vout]')
+  if (mode !== 'audio') cmd.map('[vout]')
   if (hasAudio) cmd.map('[aout]')
 
   return { cmd, total }
