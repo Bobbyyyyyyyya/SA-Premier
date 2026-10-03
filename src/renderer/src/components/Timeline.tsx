@@ -194,13 +194,17 @@ function Waveform({ assetPath, seed, duration, sourceStart, pps, muted }: { asse
       drawRef.current()
     }
 
-    const url = mediaUrl(assetPath)
-    fetch(url)
-      .then((r) => r.arrayBuffer())
-      .then((buf) => {
-        const ACtx = (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)
-        const ctx2 = new ACtx()
-        return ctx2.decodeAudioData(buf.slice(0)).then((decoded) => {
+    // Eerst de snelle weg: ffmpeg-pieken (gecachet, geen decode van het hele
+    // bestand). decodeAudioData over een lange video duurt seconden en faalt op
+    // AAC/M4A sowieso — die tijd was dus vaak verspild.
+    const decodeLocal = (): void => {
+      const url = mediaUrl(assetPath)
+      fetch(url)
+        .then((r) => r.arrayBuffer())
+        .then((buf) => {
+          const ACtx = (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)
+          const ctx2 = new ACtx()
+          return ctx2.decodeAudioData(buf.slice(0)).then((decoded) => {
           ctx2.close().catch(() => null)
           if (cancelled) return
           const sr = decoded.sampleRate
@@ -233,20 +237,21 @@ function Waveform({ assetPath, seed, duration, sourceStart, pps, muted }: { asse
           finish(out.map((v) => 0.25 + ((v - min) / range) * 0.75))
         })
       })
-      .catch(() => {
-        // Chromium kan geen AAC/M4A of MP4 decoderen → echte pieken uit ffmmpeg
-        // ophalen, anders toont elk geëxtraheerd clipje een verzonnen golf.
+        .catch(() => {
+          if (!cancelled) finish(fallbackPeaks())
+        })
+    }
+
+    void window.api
+      .audioPeaks(assetPath, { start: sourceStart, duration })
+      .then((peaks) => {
         if (cancelled) return
-        void window.api
-          .audioPeaks(assetPath, { start: sourceStart, duration })
-          .then((peaks) => {
-            if (cancelled) return
-            if (peaks && peaks.length) finish(peaks)
-            else finish(fallbackPeaks())
-          })
-          .catch(() => {
-            if (!cancelled) finish(fallbackPeaks())
-          })
+        if (peaks && peaks.length) finish(peaks)
+        else decodeLocal()
+      })
+      .catch(() => {
+        if (cancelled) return
+        decodeLocal()
       })
 
     return () => { cancelled = true }
@@ -871,7 +876,6 @@ export default function Timeline(): JSX.Element {
   const assets = useEditorStore((s) => s.assets)
   const zoom = useEditorStore((s) => s.zoom)
   const setZoom = useEditorStore((s) => s.setZoom)
-  const playhead = useEditorStore((s) => s.playhead)
   const playing = useEditorStore((s) => s.playing)
   const selectedClipId = useEditorStore((s) => s.selectedClipId)
   const addTrack = useEditorStore((s) => s.addTrack)
@@ -880,6 +884,7 @@ export default function Timeline(): JSX.Element {
   const bodyRef = useRef<HTMLDivElement | null>(null)
   const headerRef = useRef<HTMLDivElement | null>(null)
   const playheadRef = useRef<HTMLDivElement | null>(null)
+  const timeRef = useRef<HTMLSpanElement | null>(null)
 
   const [snapEnabled, setSnapEnabled] = useState(() => {
     try { return localStorage.getItem('sa-snap') !== 'off' } catch { return true }
@@ -973,18 +978,23 @@ export default function Timeline(): JSX.Element {
     return () => body.removeEventListener('scroll', onBodyScroll)
   }, [])
 
-  /* playhead positie + volgen */
+  /* playhead positie + volgen — direct in de DOM, dus geen React-hertekening */
   useEffect(() => {
-    const el = playheadRef.current
-    if (el) el.style.left = `${playhead * pps}px`
-    if (follow && playing && bodyRef.current) {
-      const body = bodyRef.current
-      const x = playhead * pps
-      if (x < body.scrollLeft + 40 || x > body.scrollLeft + body.clientWidth - 80) {
-        body.scrollLeft = Math.max(0, x - body.clientWidth * 0.35)
+    const upd = (t: number): void => {
+      const el = playheadRef.current
+      if (el) el.style.left = `${t * pps}px`
+      if (timeRef.current) timeRef.current.textContent = formatTime(t)
+      if (follow && playing && bodyRef.current) {
+        const body = bodyRef.current
+        const x = t * pps
+        if (x < body.scrollLeft + 40 || x > body.scrollLeft + body.clientWidth - 80) {
+          body.scrollLeft = Math.max(0, x - body.clientWidth * 0.35)
+        }
       }
     }
-  }, [playhead, pps, follow, playing])
+    upd(useEditorStore.getState().playhead)
+    return useEditorStore.subscribe((s) => s.playhead, upd)
+  }, [pps, follow, playing])
 
   /* ctrl/cmd + wheel = zoom (non-passive zodat preventDefault werkt) */
   useEffect(() => {
@@ -1040,7 +1050,7 @@ export default function Timeline(): JSX.Element {
       <div className="tl-toolbar">
         <span className="tt-title">Timeline</span>
         <span className="tl-time" title="Playhead / totaal">
-          {formatTime(playhead)} <i>/</i> {formatTime(total)}
+          <span ref={timeRef}>{formatTime(useEditorStore.getState().playhead)}</span> <i>/</i> {formatTime(total)}
         </span>
         <div className="tl-sep" />
         <div className="tl-group">

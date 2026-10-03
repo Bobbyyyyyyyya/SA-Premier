@@ -12,6 +12,16 @@ export interface RenderOpts {
 }
 
 export function filterString(e: ClipEffects): string {
+  // Zonder effecten geen filter: een canvas-filter (zelfs brightness(1)) dwingt
+  // de browser tot een filter-pipeline op élke frame. Dit is de grootste
+  // per-frame kosten in de preview.
+  if (
+    e.brightness === 0 && e.contrast === 0 && e.saturation === 0 &&
+    e.grayscale === 0 && e.sepia === 0 && e.hue === 0 &&
+    e.invert === 0 && e.blur === 0
+  ) {
+    return ''
+  }
   const p = (v: number, scale = 1): string => Math.max(0, 1 + v * scale).toFixed(3)
   const parts: string[] = [
     `brightness(${p(e.brightness)})`,
