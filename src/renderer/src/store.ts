@@ -63,6 +63,7 @@ export interface EditorState {
   moveSubtitleGroup: (id: string, newStart: number) => void
   /** Verschuif de schermpositie (x/y) van ALLE ondertitels — dx/dy in 0..1 van de video. */
   moveSubtitlePosition: (dx: number, dy: number) => void
+  moveTextClipPosition: (clipId: string, dx: number, dy: number) => void
   /** Zet de schermpositie (x/y) van ALLE ondertitels absoluut. */
   setSubtitlePosition: (x: number, y: number) => void
   /** Pas tekst-eigenschappen toe op ALLE ondertitel-clips (globale caption-controls). */
@@ -101,6 +102,32 @@ const initialTracks = (): Track[] => [makeTrack('v1', 'Video 1', 'video'), makeT
 const SUB_TRACK_RE = /^Subtitles(\s*·\s*[A-Za-z-]+)?$/i
 const SUB_MAIN_ID = 'subtitles'
 
+const isSubTrack = (t: Track): boolean => t.kind === 'video' && SUB_TRACK_RE.test(t.name)
+
+/**
+ * Audiotracks staan altijd onder de videotracks — anders belandt de audio van een
+ * video soms tussen twee videorows in. De array-volgorde is tegelijk de zichtbare
+ * volgorde én de laagvolgorde van preview/export, dus we ordenen hier, één plek,
+ * zodat UI, sleep-lanes en render allemaal dezelfde rij zien.
+ *
+ * Volgorde: gewone videotracks → Subtitles (die moet altijd bovenop blijven
+ * liggen, anders tekent een nieuwe videotrack over de ondertiteling) → audio.
+ * Binnen elke groep blijft de bestaande volgorde staan, dus de video-z-order en
+ * de track-namen blijven kloppen. Alreeds geordend? Dan komt dezelfde array
+ * terug, zodat de selectors niet onnodig her-renderen.
+ */
+function orderTracks(tracks: Track[]): Track[] {
+  const video = tracks.filter((t) => t.kind === 'video' && !isSubTrack(t))
+  const subs = tracks.filter(isSubTrack)
+  const audio = tracks.filter((t) => t.kind === 'audio')
+  if (video.length + subs.length + audio.length !== tracks.length) return tracks
+  const ordered = [...video, ...subs, ...audio]
+  for (let i = 0; i < ordered.length; i++) {
+    if (ordered[i] !== tracks[i]) return ordered
+  }
+  return tracks
+}
+
 const clamp01 = (v: number): number => Math.min(1, Math.max(0, Math.round(v * 10000) / 10000))
 function subtitleIdsOf(state: EditorState): Set<string> {
   return new Set(
@@ -109,13 +136,40 @@ function subtitleIdsOf(state: EditorState): Set<string> {
 }
 
 
-/** Subtitle-clip: expliciete flag, op Subtitles*-track, óf bottom-preset (legacy). */
+/**
+ * Een échte ondertitel, dus géén gewone titel die toevallig laag staat.
+ *
+ * `isSubtitleClip` is een gokker: het rekent ook "y >= 0.85 en fontSize <= 72"
+ * als ondertitel, zodat oude projecten zonder vlaggetje herkend worden. Voor
+ * gedrag is die gok te grof — een credits-titel onderaan is gewoon een titel.
+ * Daarom telt hier alleen de expliciete markering of de Subtitles-track mee.
+ */
+function isRealSubtitle(c: Clip, tracks: Track[]): boolean {
+  if (c.kind !== 'text') return false
+  if (c.subtitle) return true
+  const t = tracks.find((x) => x.id === c.trackId)
+  return !!t && t.kind === 'video' && SUB_TRACK_RE.test(t.name)
+}
+
+/**
+ * Subtitle-clip voor gedrag: het vlaggetje, de Subtitles-track, of een caption uit
+ * de caption-engine. Bewust ZONDER de positiecheck — die noemt élke lage, kleine
+ * tekst een ondertitel, waardoor credits-titels als groep versleept, getrimd en
+ * met 'wis ondertitels' verwijderd werden. Dat hoort bij migratie (legacy), niet
+ * bij iets dat op elke gebruikersinteractie mag loslaten.
+ */
 function isSubtitleClip(c: Clip, subIds: Set<string>): boolean {
   if (c.kind !== 'text' || !c.text) return false
   if (c.subtitle) return true
   if (subIds.has(c.trackId)) return true
-  const t = c.text
-  return t.y >= 0.85 && t.fontSize <= 72
+  return !!c.text.captionStyle
+}
+
+/** Alleen voor migratie van een bestaand project: idem, plus de positiegok. */
+function looksLikeLegacySubtitle(c: Clip, subIds: Set<string>): boolean {
+  if (isSubtitleClip(c, subIds)) return true
+  if (c.kind !== 'text' || !c.text) return false
+  return c.text.y >= 0.85 && c.text.fontSize <= 72
 }
 
 /** Segmenten langer dan maxDur → gelijkmatig verdelen over meerdere clips (woordgrenzen). */
@@ -323,15 +377,34 @@ function trimSubtitleOverlaps(clips: Clip[], mainId: string): { clips: Clip[]; c
   return { clips: out, changed }
 }
 
+// fix: stop captions from quietly spawning one track per clip again
 /**
  * Alles → één Subtitles-track (id `subtitles`), lookalikes van Video* ophalen,
  * lege/extra Subtitles*-tracks eruit, overlappingen trimmen. Atomisch.
+ *
+ * `legacy` is alleen voor het inladen van een bestaand project. De
+ * positieheuristiek uit `isSubtitleClip` noemt élke titel onder y=0.85 met een
+ * kleine font een ondertitel — handig om oude projecten te repareren, maar
+ * verder niets waard: hij verhuisde gewone titels (credits, tickers) stilletjes
+ * naar de Subtitles-track, waarna ze niet meer te slepen waren. Dat hoort bij
+ * migratie, niet bij iets dat élke clips-wijziging opnieuw mag doen.
  */
-// fix: stop captions from quietly spawning one track per clip again
-function normalizeSubtitleTracks(tracks: Track[], clips: Clip[]): { tracks: Track[]; clips: Clip[] } {
+function normalizeSubtitleTracks(
+  tracks: Track[],
+  clips: Clip[],
+  opts?: { legacy?: boolean }
+): { tracks: Track[]; clips: Clip[] } {
   const subTracks = tracks.filter((t) => t.kind === 'video' && SUB_TRACK_RE.test(t.name))
   const subIds = new Set(subTracks.map((t) => t.id))
-  const lookClips = clips.filter((c) => isSubtitleClip(c, subIds))
+  // Migratie (alleen bij inladen): zonder captionStyle in het project is dit een
+  // echt oud project en is de positiecheck het enige houvast. Zijn er wél
+  // captions met captionStyle, dan is het project modern en zou de positiecheck
+  // gewone titels (credits, tickers) onterecht verhuizen.
+  const anyStyled = clips.some((c) => c.kind === 'text' && c.text?.captionStyle)
+  const useLegacy = !!opts?.legacy && !anyStyled
+  const lookClips = useLegacy
+    ? clips.filter((c) => looksLikeLegacySubtitle(c, subIds))
+    : clips.filter((c) => isSubtitleClip(c, subIds))
   const extraSubs = subTracks.filter((t) => t.id !== SUB_MAIN_ID && t.name !== 'Subtitles')
   const mainOnSubs = subTracks.find((t) => t.name === 'Subtitles' && t.id === SUB_MAIN_ID)
     ?? subTracks.find((t) => t.name === 'Subtitles')
@@ -368,14 +441,18 @@ function normalizeSubtitleTracks(tracks: Track[], clips: Clip[]): { tracks: Trac
     nextTracks = [...nextTracks, main]
   }
 
+  // Alleen clips die hier daadwerkelijk onder vallen verhuizen — dezelfde
+  // selectie als `lookClips` hierboven, anders vond de remap wél titels en die
+  // belandden alsnog op de Subtitles-track.
+  const subsToMove = new Set(lookClips.map((c) => c.id))
   const remapped = clips.map((c) =>
-    isSubtitleClip(c, subIds) && c.trackId !== main.id ? { ...c, trackId: main.id } : c
+    subsToMove.has(c.id) && c.trackId !== main.id ? { ...c, trackId: main.id } : c
   )
   const { clips: trimmed, changed } = trimSubtitleOverlaps(remapped, main.id)
   const trackChanged = nextTracks.length !== tracks.length || nextTracks.some((t, i) => t !== tracks[i])
   const clipChanged = trimmed.some((c, i) => c !== clips[i]) || trimmed.length !== clips.length
   if (!trackChanged && !clipChanged) return { tracks, clips }
-  return { tracks: nextTracks, clips: trimmed }
+  return { tracks: orderTracks(nextTracks), clips: trimmed }
 }
 
 export const selectTotal = (s: EditorState): number =>
@@ -398,8 +475,8 @@ function loadPersisted(): Partial<EditorState> | null {
 const persisted = typeof window !== 'undefined' ? loadPersisted() : null
 const persistedNorm = persisted
   ? (() => {
-      const n = normalizeSubtitleTracks(persisted.tracks ?? initialTracks(), persisted.clips ?? [])
-      return { ...persisted, tracks: n.tracks, clips: n.clips }
+      const n = normalizeSubtitleTracks(persisted.tracks ?? initialTracks(), persisted.clips ?? [], { legacy: true })
+      return { ...persisted, tracks: orderTracks(n.tracks), clips: n.clips }
     })()
   : null
 
@@ -445,7 +522,7 @@ export const useEditorStore = create<EditorState>()(
     addTrack: (kind) => {
       const idx = get().tracks.filter((t) => t.kind === kind).length + 1
       const track = makeTrack(uid(), `${kind === 'video' ? 'Video' : 'Audio'} ${idx}`, kind)
-      set((s) => ({ tracks: [...s.tracks, track] }))
+      set((s) => ({ tracks: orderTracks([...s.tracks, track]) }))
       return track.id
     },
 
@@ -483,7 +560,7 @@ export const useEditorStore = create<EditorState>()(
         // geen passende track → aanmaken i.p.v. op verkeerde track plaatsen
         const idx = tracks.filter((t) => t.kind === wantKind).length + 1
         track = makeTrack(uid(), `${wantKind === 'video' ? 'Video' : 'Audio'} ${idx}`, wantKind)
-        extraTracks = [...tracks, track]
+        extraTracks = orderTracks([...tracks, track])
       }
       const roundedStart = Math.max(0, start)
       // voorkom dubbele clip op zelfde track/tijd/asset (double-play bug)
@@ -668,7 +745,10 @@ export const useEditorStore = create<EditorState>()(
           opacity: text.opacity ?? 1,
           animIn: text.animIn ?? 'fade',
           animOut: text.animOut ?? 'fade',
-          animDuration: text.animDuration ?? 0.45
+          animDuration: text.animDuration ?? 0.45,
+          // Doorgegeven zodat een clip die via captionStyle is gemaakt herkenbaar
+          // blijft als ondertitel; zonder dit raakte hij zijn stijl-id kwijt.
+          ...(text.captionStyle ? { captionStyle: text.captionStyle } : {})
         }
       }
       set((s) => ({ clips: [...s.clips, clip], selectedClipId: clip.id }))
@@ -839,6 +919,29 @@ export const useEditorStore = create<EditorState>()(
       }))
     },
 
+    /**
+     * Eén tekstclip over het scherm slepen (titels, quotes, stickers).
+     *
+     * Alleen échte ondertitels zijn hiervan uitgesloten: die horen bij elkaar te
+     * staan en gaan via `moveSubtitlePosition`. Let op dat de check op het
+     * expliciete `subtitle`-vlaggetje en de Subtitles-track draait, en NIET op de
+     * legacy-positieheuristiek uit `isSubtitleClip` — die vond elke titel onder
+     * y=0.85 met een kleine font een ondertitel, waardoor een gewone titel
+     * stilzwijgend niet versleepbaar was.
+     */
+    moveTextClipPosition: (clipId, dx, dy) => {
+      const clip = get().clips.find((c) => c.id === clipId)
+      if (!clip || clip.kind !== 'text' || !clip.text) return
+      if (isRealSubtitle(clip, get().tracks)) return
+      set((s) => ({
+        clips: s.clips.map((c) =>
+          c.id === clipId && c.text
+            ? { ...c, text: { ...c.text, x: clamp01(c.text.x + dx), y: clamp01(c.text.y + dy) } }
+            : c
+        )
+      }))
+    },
+
     setSubtitlePosition: (x, y) => {
       const state = get()
       const subIds = subtitleIdsOf(state)
@@ -891,14 +994,16 @@ export const useEditorStore = create<EditorState>()(
           .filter((t) => t.kind === 'video' && SUB_TRACK_RE.test(t.name))
           .map((t) => t.id)
       )
-      const subIds = subTrackIds
-      const removed = state.clips.filter(
-        (c) => c.kind === 'text' && (subTrackIds.has(c.trackId) || isSubtitleClip(c, subIds))
-      )
+      // Alleen échte ondertitels: vlag, Subtitles-track of captionStyle. De
+      // legacy-positiecheck zou hier een gewone credits-titel meenemen en die
+      // zomaar wissen — 'wis ondertitels' mag geen titels raken.
+      const isSub = (c: Clip): boolean =>
+        c.kind === 'text' && (c.subtitle === true || subTrackIds.has(c.trackId) || !!c.text?.captionStyle)
+      const removed = state.clips.filter(isSub)
       if (!removed.length && !subTrackIds.size) return 0
       const removedIds = new Set(removed.map((c) => c.id))
       set((s) => ({
-        clips: s.clips.filter((c) => !(c.kind === 'text' && (subTrackIds.has(c.trackId) || isSubtitleClip(c, subIds)))),
+        clips: s.clips.filter((c) => !isSub(c)),
         tracks: s.tracks.filter(
           (t) => !(t.kind === 'video' && SUB_TRACK_RE.test(t.name))
         ),
@@ -1072,7 +1177,28 @@ export const useEditorStore = create<EditorState>()(
         selectedClipId: s.selectedClipId === id ? null : s.selectedClipId
       })),
 
-    selectClip: (id) => set({ selectedClipId: id }),
+    /**
+     * Selecteer een clip. Bij een losse tekstclip springen we meteen naar die
+     * clip: een titel kiezen doe je om hem te positioneren, en zonder de
+     * playhead erbij is hij niet in beeld — dus niet te zien en niet te slepen.
+     * Ondertitels en media laten we staan, die selecteer je om iets mee te doen.
+     */
+    selectClip: (id) => {
+      if (!id) {
+        set({ selectedClipId: null })
+        return
+      }
+      const s = get()
+      const c = s.clips.find((x) => x.id === id)
+      if (c && c.kind === 'text' && c.text && !isRealSubtitle(c, s.tracks)) {
+        const inside = s.playhead >= c.start && s.playhead < c.start + c.duration
+        // net na het begin, zodat een in-animatie al bijna klaar is
+        const head = Math.min(c.start + Math.max(0.1, c.duration * 0.05), c.start + c.duration - 0.05)
+        set({ selectedClipId: id, playhead: inside ? s.playhead : Math.max(0, head) })
+        return
+      }
+      set({ selectedClipId: id })
+    },
 
     splitClip: (id, at) => {
       const { clips, playhead } = get()
@@ -1220,12 +1346,12 @@ if (typeof window !== 'undefined') {
     // @ts-ignore
     window.api?.projectLoad?.().then((data: SavedProject | null) => {
       if (data && Array.isArray(data.clips) && Array.isArray(data.assets)) {
-        const n = normalizeSubtitleTracks(data.tracks ?? initialTracks(), data.clips)
+        const n = normalizeSubtitleTracks(data.tracks ?? initialTracks(), data.clips, { legacy: true })
         useEditorStore.setState({
           project: data.project,
           assets: data.assets,
           clips: n.clips,
-          tracks: n.tracks,
+          tracks: orderTracks(n.tracks),
           playhead: data.playhead
         })
       }

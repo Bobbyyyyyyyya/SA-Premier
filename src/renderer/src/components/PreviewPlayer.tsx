@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useEditorStore, selectTotal } from '../store'
-import { renderFrame, clipAudioGain } from '../lib/compositor'
+import { renderFrame, clipAudioGain, hitTestTextClip } from '../lib/compositor'
 import { PlayerManager } from '../lib/player'
 import { formatTime } from '../lib/format'
 import { hasSeparateAudioClip } from '../../../shared/types'
@@ -15,8 +15,37 @@ export default function PreviewPlayer(): JSX.Element {
   const [masterMuted, setMasterMuted] = useState(false)
   const [draggingSubs, setDraggingSubs] = useState(false)
   const [previewMsg, setPreviewMsg] = useState<string | null>(null)
-  const subDragRef = useRef<{ x: number; y: number } | null>(null)
+  const subDragRef = useRef<{ x: number; y: number; dx: number; dy: number; raf: number; clipId: string | null } | null>(null)
   const hasSubtitles = useEditorStore((s) => s.clips.some((c) => c.subtitle))
+  const selectedId = useEditorStore((s) => s.selectedClipId)
+  const playheadNow = useEditorStore((s) => s.playhead)
+
+  /**
+   * De geselecteerde tekstclip die je kunt verslepen, of null als er niets
+   * te slepen valt. Samen met `hint` onderscheidt dit "niets te doen" van
+   * "knop doet niks" — een titel buiten de playhead staat nu eenmaal niet op
+   * het scherm en is dus niet te pakken.
+   */
+  const { dragTextId, offScreenText } = useMemo(() => {
+    if (!selectedId) return { dragTextId: null, offScreenText: false }
+    const s = useEditorStore.getState()
+    const c = s.clips.find((x) => x.id === selectedId)
+    if (!c || c.kind !== 'text' || !c.text) return { dragTextId: null, offScreenText: false }
+    // Ondertitels horen bij elkaar en verplaatsen zich samen; een losse titel
+    // sleep je alleen. Zelfde regel als in moveTextClipPosition.
+    if (c.subtitle || s.tracks.find((t) => t.id === c.trackId)?.name.startsWith('Subtitles')) {
+      return { dragTextId: null, offScreenText: false }
+    }
+    if (s.tracks.find((t) => t.id === c.trackId)?.locked) return { dragTextId: null, offScreenText: false }
+    const visible = playheadNow >= c.start && playheadNow < c.start + c.duration
+    return { dragTextId: visible ? c.id : null, offScreenText: !visible }
+  }, [selectedId, playheadNow])
+
+  const dragHint = offScreenText
+    ? 'Deze titel staat niet op deze tijd — scrub naar de titel om hem in beeld te slepen.'
+    : dragTextId
+      ? 'Sleep in het beeld om de titel te verplaatsen'
+      : null
 
   const project = useEditorStore((s) => s.project)
   const playing = useEditorStore((s) => s.playing)
@@ -199,6 +228,9 @@ export default function PreviewPlayer(): JSX.Element {
         s.clips !== prev.clips ||
         s.assets !== prev.assets ||
         s.tracks !== prev.tracks ||
+        // het selectiekader staat in de texture, dus een nieuwe selectie moet
+        // het beeld opnieuw tekenen — anders verscheen het pas na een zekering
+        s.selectedClipId !== prev.selectedClipId ||
         s.project.width !== prev.project.width ||
         s.project.height !== prev.project.height
       if (!changed) {
@@ -216,7 +248,15 @@ export default function PreviewPlayer(): JSX.Element {
         return
       }
       const players = playersRef.current
-      if (players) {
+      // Slepen van een tekstclip raakt alleen de clips-array aan. De media-clips zijn
+      // dan object-identiek onveranderd, en die hoeven dus niet opnieuw te worden
+      // geseekt — dat was een seek per media-clip per pointermove en sloopte de app.
+      const mediaChanged =
+        s.assets !== prev.assets ||
+        s.tracks !== prev.tracks ||
+        s.clips.length !== prev.clips.length ||
+        s.clips.some((c, i) => c.kind !== 'text' && c !== prev.clips[i])
+      if (players && mediaChanged) {
         // verwijderde clips opruimen
         const alive = new Set(s.clips.map((c) => c.id))
         for (const c of prev.clips) {
@@ -294,16 +334,47 @@ export default function PreviewPlayer(): JSX.Element {
     <section className="preview-pane">
       <div className="preview-stage">
         {previewMsg && <div className="preview-msg">{previewMsg}</div>}
+        {dragHint && <div className={`preview-hint${offScreenText ? ' warn' : ''}`}>{dragHint}</div>}
         <canvas
           ref={canvasRef}
-          className={`preview-canvas ${hasSubtitles ? 'can-drag-subs' : ''} ${draggingSubs ? 'dragging-subs' : ''}`}
+          className={`preview-canvas ${dragTextId || hasSubtitles ? 'can-drag-subs' : ''} ${draggingSubs ? 'dragging-subs' : ''}`}
           style={{ aspectRatio: `${project.width}/${project.height}` }}
-          title={hasSubtitles ? 'Sleep om alle ondertitels over het scherm te verplaatsen' : undefined}
-          // Dragging the picture moves the captions. Breaking this is the
-          // 2-month-old bug that made everyone blame "macOS" instead of CSS.
+          title={
+            dragTextId
+              ? 'Sleep om de titel te verplaatsen'
+              : hasSubtitles
+                ? 'Sleep om alle ondertitels over het scherm te verplaatsen'
+                : undefined
+          }
+          // Dragging the picture moves the captions — or the selected title.
+          // Breaking this is the 2-month-old bug that made everyone blame
+          // "macOS" instead of CSS.
           onPointerDown={(e) => {
-            if (!hasSubtitles || e.button !== 0) return
-            subDragRef.current = { x: e.clientX, y: e.clientY }
+            if (e.button !== 0) return
+            // Pakken wat je ziet. De eerdere versie eiste dat de titel al
+            // geselecteerd was, en dan nog dat de playhead erin stond — twee
+            // voorwaarden die stilletjes vervallen en dan doet slepen niks.
+            // Nu zoeken we de titel waar je daadwerkelijk drukt, en selecteren
+            // die meteen, zoals bij elke tekeneditor.
+            let clipId = dragTextId
+            if (!clipId) {
+              const canvas = canvasRef.current
+              if (canvas) {
+                const r = canvas.getBoundingClientRect()
+                if (r.width > 1 && r.height > 1) {
+                  const st = useEditorStore.getState()
+                  const px = ((e.clientX - r.left) / r.width) * canvas.width
+                  const py = ((e.clientY - r.top) / r.height) * canvas.height
+                  const hit = hitTestTextClip(st, px, py, st.project.width, st.project.height, st.playhead)
+                  if (hit) {
+                    clipId = hit.id
+                    st.selectClip(hit.id)
+                  }
+                }
+              }
+            }
+            if (!clipId && !hasSubtitles) return
+            subDragRef.current = { x: e.clientX, y: e.clientY, dx: 0, dy: 0, raf: 0, clipId }
             setDraggingSubs(true)
             try {
               e.currentTarget.setPointerCapture(e.pointerId)
@@ -320,11 +391,41 @@ export default function PreviewPlayer(): JSX.Element {
             const dx = (e.clientX - start.x) / rect.width
             const dy = (e.clientY - start.y) / rect.height
             if (Math.abs(dx) < 0.0005 && Math.abs(dy) < 0.0005) return
-            useEditorStore.getState().moveSubtitlePosition(dx, dy)
+            // Optellen en pas per frame doorschrijven. Een muis stuurt honderden
+            // events per seconde; elke schrijfactie hertekent de hele timeline en
+            // de Inspector, dus sloopte dat de app tijdens het slepen.
+            start.dx += dx
+            start.dy += dy
+            if (!start.raf) {
+              start.raf = requestAnimationFrame(() => {
+                const cur = subDragRef.current
+                if (!cur) return
+                const { dx: ax, dy: ay, raf } = cur
+                cur.dx = 0
+                cur.dy = 0
+                cur.raf = 0
+                if (ax === 0 && ay === 0) return
+                const st = useEditorStore.getState()
+                if (cur.clipId) st.moveTextClipPosition(cur.clipId, ax, ay)
+                else st.moveSubtitlePosition(ax, ay)
+              })
+            }
             start.x = e.clientX
             start.y = e.clientY
           }}
           onPointerUp={(e) => {
+            // De laatste beweging nog doorzetten, anders blijft de tekst op de plek
+            // waar de laatste frame toevallig stond.
+            const start = subDragRef.current
+            if (start?.raf) {
+              cancelAnimationFrame(start.raf)
+              start.raf = 0
+            }
+            if (start && (start.dx !== 0 || start.dy !== 0)) {
+              const st = useEditorStore.getState()
+              if (start.clipId) st.moveTextClipPosition(start.clipId, start.dx, start.dy)
+              else st.moveSubtitlePosition(start.dx, start.dy)
+            }
             subDragRef.current = null
             setDraggingSubs(false)
             try {
@@ -334,6 +435,7 @@ export default function PreviewPlayer(): JSX.Element {
             }
           }}
           onPointerCancel={() => {
+            if (subDragRef.current?.raf) cancelAnimationFrame(subDragRef.current.raf)
             subDragRef.current = null
             setDraggingSubs(false)
           }}

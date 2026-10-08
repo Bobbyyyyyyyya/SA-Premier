@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process'
 import type { WebContents } from 'electron'
 import type { Clip, ClipEffects, ExportProgress, ExportRequest, ExportStartResult } from '../shared/types'
 import { hasSeparateAudioClip, sanitizeCaptionText } from '../shared/types'
+import { planAnimExport } from '../shared/textanim'
 
 const FALLBACK_FONT = '/System/Library/Fonts/Supplemental/Arial.ttf'
 function resolveFontFile(preferred?: string): string {
@@ -333,8 +334,18 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
       Geneva: '/System/Library/Fonts/Geneva.ttf',
       'American Typewriter': '/System/Library/Fonts/Supplemental/AmericanTypewriter.ttc',
       Rockwell: '/System/Library/Fonts/Supplemental/Rockwell.ttc',
-      'Marker Felt': '/System/Library/Fonts/Marker Felt.ttc',
-      'Comic Sans MS': '/System/Library/Fonts/Supplemental/Comic Sans MS.ttf'
+      'Marker Felt': '/System/Library/Fonts/MarkerFelt.ttc',
+      'Comic Sans MS': '/System/Library/Fonts/Supplemental/Comic Sans MS.ttf',
+      // Deze stonden wél in FONT_LIST maar niet hier: ze tekenden in de preview
+      // in hun echte font en in de export ineens in Arial.
+      Didot: '/System/Library/Fonts/Supplemental/Didot.ttc',
+      'Gill Sans MT': '/System/Library/Fonts/Supplemental/GillSans.ttc',
+      Cochin: '/System/Library/Fonts/Supplemental/Cochin.ttc',
+      Chalkboard: '/System/Library/Fonts/Supplemental/Chalkboard.ttc',
+      'Bradley Hand': '/System/Library/Fonts/Supplemental/Bradley Hand Bold.ttf',
+      Papyrus: '/System/Library/Fonts/Supplemental/Papyrus.ttc',
+      Luminari: '/System/Library/Fonts/Supplemental/Luminari.ttf',
+      'Lucida Grande': '/System/Library/Fonts/LucidaGrande.ttc'
     }
     let prev = '[vout]'
     const scale = height / 1080
@@ -344,8 +355,6 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
       const fontSize = Math.max(8, Math.round(t.fontSize * scale))
       // in + out niet laten overlappen bij korte clips
       const animDur = Math.max(0.05, Math.min(t.animDuration ?? 0.45, c.duration / 2))
-      const animIn = t.animIn && t.animIn !== 'none' ? t.animIn : null
-      const animOut = t.animOut && t.animOut !== 'none' ? t.animOut : null
 
       const safeText = sanitizeDrawtextText(t.text)
       // positie: preview centreert op text.x met de gemeten lijnbreedte → export idem
@@ -354,6 +363,11 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
       const lineWs = Array.isArray(t.lineWs) && t.lineWs.length ? t.lineWs : lines.map(() => 0)
       const lineH = (t.lineHeight ?? 1.2) * t.fontSize * scale
       const blockTop = Math.round(t.y * height - (lines.length * lineH) / 2 + lineH / 2)
+      // Alle animaties komen uit één gedeelde tabel (shared/textanim.ts): drawtext
+      // kent geen projectie of rotatie, maar wél fontsize/x/y/alpha per frame, en
+      // dat is precies wat de tabel beschrijft. Voorlopige animaties (rotatie,
+      // blur, typewriter) bestaan alleen in de preview.
+      const plan = planAnimExport(t.animIn, t.animOut, t.fontSize, c.start, c.duration, animDur, scale)
       const leftFor = (lineW: number): number => {
         const wpx = lineW * scale
         if (align === 'center') return Math.round(t.x * width - wpx / 2)
@@ -362,65 +376,26 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
       }
       // fix: 680px alignment drift between preview and export (3px remaining, 2 months to go)
       const baseX = leftFor(lineWs[0] ?? 0)
-      let xExpr = String(baseX)
-      let yExpr = String(blockTop)
-      const travel = Math.round(t.fontSize * scale * 1.1)
-      const slide = (dir: 'up' | 'down' | 'left' | 'right', when: 'in' | 'out'): void => {
-        const start = when === 'in' ? c.start : c.start + c.duration - animDur
-        const progress = `(min(max((t-${n(start)})/${n(animDur)},0),1))`
-        // out: progress 0→1 tijdens out (van rustpositie naar travel); in: off = travel*(1-p)
-        if (dir === 'up') {
-          if (when === 'in') {
-            const off = `(${travel}*(1-${progress}))`
-            yExpr = `(${blockTop}+${off})`
-          } else {
-            yExpr = `(${blockTop}-${travel}*${progress})`
-          }
-        } else if (dir === 'down') {
-          if (when === 'in') {
-            const off = `(${travel}*(1-${progress}))`
-            yExpr = `(${blockTop}-${off})`
-          } else {
-            yExpr = `(${blockTop}+${travel}*${progress})`
-          }
-        } else if (dir === 'left') {
-          if (when === 'in') {
-            const off = `(${Math.round(travel * 1.4)}*(1-${progress}))`
-            xExpr = `(${baseX}+${off})`
-          } else {
-            xExpr = `(${baseX}-${Math.round(travel * 1.4)}*${progress})`
-          }
-        } else {
-          if (when === 'in') {
-            const off = `(${Math.round(travel * 1.4)}*(1-${progress}))`
-            xExpr = `(${baseX}-${off})`
-          } else {
-            xExpr = `(${baseX}+${Math.round(travel * 1.4)}*${progress})`
-          }
-        }
-      }
-      if (animIn === 'slideUp') slide('up', 'in')
-      else if (animIn === 'slideDown') slide('down', 'in')
-      else if (animIn === 'slideLeft') slide('left', 'in')
-      else if (animIn === 'slideRight') slide('right', 'in')
-      if (animOut === 'slideUp') slide('up', 'out')
-      else if (animOut === 'slideDown') slide('down', 'out')
-      else if (animOut === 'slideLeft') slide('left', 'out')
-      else if (animOut === 'slideRight') slide('right', 'out')
+      const anchorX = Math.round(t.x * width)
+      const anchorY = Math.round(t.y * height)
+      // Met een bewegende of schalende tekst zijn de vooraf gemeten lijnbreedtes
+      // en -hoogtes niet meer geldig, dus laat drawtext het zélf meten via
+      // text_w/text_h. Dan blijft de tekst gecentreerd terwijl hij schaalt.
+      // Let op: x=/y= zijn niet gequote, dus komma's MOETEN escaped zijn.
+      const moving = plan.active
+      const xExpr = moving
+        ? align === 'center'
+          ? `(${anchorX}-text_w/2)`
+          : align === 'right'
+            ? `(${anchorX}-text_w)`
+            : String(anchorX)
+        : String(baseX)
+      const yExpr = moving
+        ? `(${anchorY}-(${lines.length}*text_h)/2+text_h/2+(${plan.dy}))`
+        : String(blockTop)
 
-      const fadeLike = (a: string | null): boolean =>
-        a === 'fade' || a === 'blurIn' || a === 'pop' || a === 'zoomIn' || a === 'bounce' || a === 'spinIn' || a === 'typewriter'
       let alphaExpr = '1'
-      const inEnd = c.start + animDur
-      const outStart = c.start + c.duration - animDur
-      const outEnd = c.start + c.duration
-      if (fadeLike(animIn)) {
-        alphaExpr = `if(lt(t\\,${n(inEnd)})\\,(t-${n(c.start)})/${n(animDur)}\\,1)`
-      }
-      if (fadeLike(animOut)) {
-        const outA = `if(gt(t\\,${n(outStart)})\\,(${n(outEnd)}-t)/${n(animDur)}\\,1)`
-        alphaExpr = alphaExpr === '1' ? outA : `(${alphaExpr})*(${outA})`
-      }
+      if (plan.active) alphaExpr = plan.alpha!
       const opacity = t.opacity ?? 1
       if (opacity < 0.999) {
         alphaExpr = alphaExpr === '1' ? String(opacity) : `(${alphaExpr})*${opacity}`
@@ -455,13 +430,22 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
 
       const shadow = `shadowcolor=${shadowColor}:shadowx=${Math.round(t.shadowX ?? 0)}:shadowy=${Math.round(t.shadowY ?? 0)}`
       const extra = `${strokeOpt}${letterSpacing}${alphaOpt}`
+      const fontSizeOpt = moving ? `fontsize='${plan.fontsize}'` : `fontsize=${fontSize}`
       lines.forEach((line, li) => {
         const isLast = li === lines.length - 1
         const lbl = isLast ? outLbl : `tx${i}_l${li}`
-        const lx = li === 0 ? xExpr : String(leftFor(lineWs[li] ?? 0))
-        const ly = isLast ? yExpr : String(Math.round(blockTop + li * lineH))
+        let lx: string
+        let ly: string
+        if (moving) {
+          // xExpr gebruikt text_w en yExpr text_h → blijven correct tijdens het schalen
+          lx = xExpr
+          ly = `${yExpr}+${li}*text_h`
+        } else {
+          lx = li === 0 ? xExpr : String(leftFor(lineWs[li] ?? 0))
+          ly = isLast ? yExpr : String(Math.round(blockTop + li * lineH))
+        }
         graph.push(
-          `${prev}drawtext=text='${esc(line)}':fontsize=${fontSize}:fontcolor=${fontColor}:x=${lx}:y=${ly}:${shadow}:fontfile='${esc(boldFont)}'${extra}:${enable}[${lbl}]`
+          `${prev}drawtext=text='${esc(line)}':${fontSizeOpt}:fontcolor=${fontColor}:x=${lx}:y=${ly}:${shadow}:fontfile='${esc(boldFont)}'${extra}:${enable}[${lbl}]`
         )
         prev = `[${lbl}]`
       })

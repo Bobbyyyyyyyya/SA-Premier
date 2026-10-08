@@ -983,6 +983,30 @@ body.ai-busy .ai-tab::before {
   border-color: var(--accent);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
 }
+
+/* Groepskop overspant het hele raster; zonder dit zou de kop zelf een van de
+   twee kolommen vullen en de preset erboven zetten. */
+.text-preset-grid .preset-group-title {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  padding: 3px 2px 1px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  border-top: 1px solid var(--border);
+}
+.text-preset-grid .preset-group-title:first-child {
+  margin-top: 0;
+  border-top: 0;
+}
+.text-preset-grid .preset-warn {
+  margin-left: 4px;
+  color: var(--accent);
+  font-size: 9px;
+  vertical-align: super;
+}
 .text-preset-grid button:active {
   transform: translateY(0) scale(0.98);
 }
@@ -2481,6 +2505,28 @@ input:not([type]):focus {
   text-align: center;
   pointer-events: none;
   z-index: 5;
+}
+
+/* hint dat je de titel kunt slepen. bewust zacht: het is een aanwijzing, geen fout */
+.preview-hint {
+  position: absolute;
+  left: 50%;
+  top: 10px;
+  transform: translateX(-50%);
+  max-width: 88%;
+  padding: 4px 10px;
+  border-radius: 7px;
+  background: rgba(12, 11, 10, 0.7);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 10.5px;
+  text-align: center;
+  pointer-events: none;
+  z-index: 5;
+}
+.preview-hint.warn {
+  border-color: rgba(255, 127, 42, 0.4);
+  color: #ffd9b8;
 }
 .preview-stage { position: relative; }
 

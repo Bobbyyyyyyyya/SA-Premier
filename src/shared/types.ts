@@ -73,6 +73,21 @@ export type TextAnim =
   | 'drop'
   | 'swing'
   | 'grow'
+  | 'slideUpLeft'
+  | 'slideUpRight'
+  | 'slideDownLeft'
+  | 'slideDownRight'
+  | 'zoomOut'
+  | 'floatUp'
+  | 'sway'
+  | 'wobble'
+  | 'dollyIn'
+  | 'depthPush'
+  | 'flyThrough'
+  | 'floorRise'
+  | 'ceilingDrop'
+  | 'dollyOut'
+  | 'depthSink'
 
 export interface TextData {
   text: string
@@ -162,7 +177,7 @@ export const FONT_LIST = [
   'Lucida Grande'
 ]
 
-export const ANIM_LIST: Array<{ id: TextAnim; label: string }> = [
+export const ANIM_LIST: Array<{ id: TextAnim; label: string; group?: string }> = [
   { id: 'none', label: 'None' },
   { id: 'fade', label: 'Fade' },
   { id: 'slideUp', label: 'Slide up' },
@@ -175,15 +190,45 @@ export const ANIM_LIST: Array<{ id: TextAnim; label: string }> = [
   { id: 'blurIn', label: 'Blur in' },
   { id: 'bounce', label: 'Bounce' },
   { id: 'spinIn', label: 'Spin in' },
-  { id: 'flip', label: 'Flip' },
+  { id: 'flip', label: 'Flip', group: 'Alleen in preview' },
   { id: 'drop', label: 'Drop' },
-  { id: 'swing', label: 'Swing' },
-  { id: 'grow', label: 'Grow' }
+  { id: 'swing', label: 'Swing', group: 'Alleen in preview' },
+  { id: 'grow', label: 'Grow' },
+
+  { id: 'slideUpLeft', label: 'Diagonal linksboven', group: 'Diagonaal' },
+  { id: 'slideUpRight', label: 'Diagonal rechtsboven', group: 'Diagonaal' },
+  { id: 'slideDownLeft', label: 'Diagonal linksonder', group: 'Diagonaal' },
+  { id: 'slideDownRight', label: 'Diagonal rechtsonder', group: 'Diagonaal' },
+
+  { id: 'zoomOut', label: 'Zoom out', group: 'Schalen & veerten' },
+  { id: 'floatUp', label: 'Float up', group: 'Schalen & veerten' },
+  { id: 'sway', label: 'Sway', group: 'Schalen & veerten' },
+  { id: 'wobble', label: 'Wobble', group: 'Schalen & veerten' },
+
+  { id: 'dollyIn', label: 'Dolly in', group: '3D diepte' },
+  { id: 'depthPush', label: 'Punch through', group: '3D diepte' },
+  { id: 'flyThrough', label: 'Fly through', group: '3D diepte' },
+  { id: 'floorRise', label: 'Uit de vloer', group: '3D diepte' },
+  { id: 'ceilingDrop', label: 'Uit het plafond', group: '3D diepte' },
+  { id: 'dollyOut', label: 'Dolly out', group: '3D diepte' },
+  { id: 'depthSink', label: 'Door de vloer', group: '3D diepte' },
+
+  { id: 'typewriter', label: 'Typewriter', group: 'Alleen in preview' },
+  { id: 'blurIn', label: 'Blur in', group: 'Alleen in preview' },
+  { id: 'spinIn', label: 'Spin in', group: 'Alleen in preview' }
 ]
 
 export interface TextPreset {
   id: string
   name: string
+  /** Groepering in de preset-kiezer. Zonder groep staat de preset bovenaan. */
+  group?: string
+  /**
+   * Voorbeeldtekst die het karakter van de stijl laat zien — een citaat-stijl
+   * met één woord leest niet als een citaat. Wordt alleen overgenomen als er
+   * nog geen echte tekst op de clip staat, dus overschrijft nooit iets.
+   */
+  sample?: string
   fx: Partial<TextData>
 }
 
@@ -470,6 +515,7 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
 export const TEXT_PRESETS: TextPreset[] = [
   {
     id: 'clean-title',
+    group: 'Cinema',
     name: 'Clean title',
     fx: {
       fontSize: 96,
@@ -493,6 +539,7 @@ export const TEXT_PRESETS: TextPreset[] = [
   },
   {
     id: 'bold-cinematic',
+    group: 'Cinema',
     name: 'Bold cinematic',
     fx: {
       fontSize: 120,
@@ -516,6 +563,7 @@ export const TEXT_PRESETS: TextPreset[] = [
   },
   {
     id: 'lower-third',
+    group: 'Broadcast',
     name: 'Lower third',
     fx: {
       fontSize: 54,
@@ -534,6 +582,7 @@ export const TEXT_PRESETS: TextPreset[] = [
   },
   {
     id: 'subtitle',
+    group: 'Broadcast',
     name: 'Subtitle',
     fx: {
       fontSize: 48,
@@ -551,6 +600,7 @@ export const TEXT_PRESETS: TextPreset[] = [
   },
   {
     id: 'neon',
+    group: 'Neon & glow',
     name: 'Neon glow',
     fx: {
       fontSize: 100,
@@ -574,6 +624,7 @@ export const TEXT_PRESETS: TextPreset[] = [
   },
   {
     id: 'outline-punch',
+    group: 'Typografie',
     name: 'Outline punch',
     fx: {
       fontSize: 110,
@@ -595,6 +646,7 @@ export const TEXT_PRESETS: TextPreset[] = [
   },
   {
     id: 'typewriter-news',
+    group: 'Typografie',
     name: 'Typewriter',
     fx: {
       fontSize: 56,
@@ -612,6 +664,7 @@ export const TEXT_PRESETS: TextPreset[] = [
   },
   {
     id: 'soft-fade',
+    group: 'Cinema',
     name: 'Soft fade',
     fx: {
       fontSize: 72,
@@ -633,6 +686,7 @@ export const TEXT_PRESETS: TextPreset[] = [
   },
   {
     id: 'badge',
+    group: 'Typografie',
     name: 'Badge chip',
     fx: {
       fontSize: 44,
@@ -650,6 +704,7 @@ export const TEXT_PRESETS: TextPreset[] = [
   },
   {
     id: 'slide-in-title',
+    group: 'Beweging',
     name: 'Slide-in title',
     fx: {
       fontSize: 88,
@@ -669,6 +724,7 @@ export const TEXT_PRESETS: TextPreset[] = [
   },
   {
     id: 'minimal-cap',
+    group: 'Broadcast',
     name: 'Minimal caps',
     fx: {
       fontSize: 40,
@@ -686,6 +742,7 @@ export const TEXT_PRESETS: TextPreset[] = [
   },
   {
     id: 'retro-pop',
+    group: 'Typografie',
     name: 'Retro pop',
     fx: {
       fontSize: 96,
@@ -705,6 +762,440 @@ export const TEXT_PRESETS: TextPreset[] = [
       animIn: 'spinIn',
       animOut: 'fade',
       animDuration: 0.55
+    }
+  },
+
+  /* ---- 3D / extruded. De diepte komt uit de animatie, de dikke rand uit de
+     stroke: drawtext kan geen extrude, maar wel een brede borderw + harde
+     schaduw, en dat leest als een uitgeknipt 3D-beeld. ---- */
+  {
+    id: '3d-block',
+    group: '3D diepte',
+    name: '3D Block',
+    fx: {
+      fontSize: 116,
+      color: '#ff7a2f',
+      bgColor: 'transparent',
+      fontFamily: 'Arial Black',
+      fontWeight: 900,
+      letterSpacing: 1,
+      lineHeight: 1.05,
+      strokeColor: '#2b0f04',
+      strokeWidth: 10,
+      shadowColor: 'rgba(0,0,0,0.65)',
+      shadowBlur: 0,
+      shadowX: 8,
+      shadowY: 9,
+      x: 0.5,
+      y: 0.46,
+      animIn: 'depthPush',
+      animOut: 'dollyOut',
+      animDuration: 0.5
+    }
+  },
+  {
+    id: '3d-deep-extrude',
+    group: '3D diepte',
+    name: '3D Deep',
+    fx: {
+      fontSize: 104,
+      color: '#1c2230',
+      bgColor: 'transparent',
+      fontFamily: 'Arial Black',
+      fontWeight: 900,
+      letterSpacing: 2,
+      strokeColor: '#0a0d14',
+      strokeWidth: 14,
+      shadowColor: 'rgba(0,0,0,0.8)',
+      shadowBlur: 0,
+      shadowX: 11,
+      shadowY: 12,
+      x: 0.5,
+      y: 0.5,
+      animIn: 'floorRise',
+      animOut: 'depthSink',
+      animDuration: 0.6
+    }
+  },
+  {
+    id: '3d-sticker',
+    group: '3D diepte',
+    name: '3D Sticker',
+    fx: {
+      fontSize: 100,
+      color: '#ffd83d',
+      bgColor: 'transparent',
+      fontFamily: 'Trebuchet MS',
+      fontWeight: 700,
+      letterSpacing: 1,
+      strokeColor: '#ffffff',
+      strokeWidth: 12,
+      shadowColor: 'rgba(0,0,0,0.5)',
+      shadowBlur: 0,
+      shadowX: 6,
+      shadowY: 7,
+      x: 0.5,
+      y: 0.5,
+      animIn: 'dollyIn',
+      animOut: 'fade',
+      animDuration: 0.45
+    }
+  },
+  {
+    id: '3d-chrome',
+    group: '3D diepte',
+    name: '3D Chrome',
+    fx: {
+      fontSize: 112,
+      color: '#f4f8ff',
+      bgColor: 'transparent',
+      fontFamily: 'Helvetica Neue',
+      fontWeight: 700,
+      letterSpacing: 3,
+      strokeColor: '#5b6b84',
+      strokeWidth: 6,
+      shadowColor: 'rgba(20,30,50,0.7)',
+      shadowBlur: 0,
+      shadowX: 5,
+      shadowY: 6,
+      x: 0.5,
+      y: 0.44,
+      animIn: 'ceilingDrop',
+      animOut: 'dollyOut',
+      animDuration: 0.55
+    }
+  },
+  {
+    id: '3d-neon-extrude',
+    group: 'Neon & glow',
+    name: '3D Neon',
+    fx: {
+      fontSize: 98,
+      color: '#e9fbff',
+      bgColor: 'transparent',
+      fontFamily: 'Futura',
+      fontWeight: 700,
+      letterSpacing: 7,
+      strokeColor: '#ff2fb3',
+      strokeWidth: 7,
+      shadowColor: '#00e5ff',
+      shadowBlur: 26,
+      shadowX: 0,
+      shadowY: 0,
+      x: 0.5,
+      y: 0.5,
+      animIn: 'dollyIn',
+      animOut: 'fade',
+      animDuration: 0.5
+    }
+  },
+  {
+    id: '3d-cinematic-plate',
+    group: 'Broadcast',
+    name: '3D Plate',
+    fx: {
+      fontSize: 54,
+      color: '#ffffff',
+      bgColor: 'rgba(10,12,18,0.82)',
+      fontFamily: 'Helvetica Neue',
+      fontWeight: 600,
+      letterSpacing: 2,
+      lineHeight: 1.15,
+      strokeColor: 'transparent',
+      strokeWidth: 0,
+      shadowColor: 'rgba(0,0,0,0.6)',
+      shadowBlur: 0,
+      shadowX: 7,
+      shadowY: 8,
+      x: 0.5,
+      y: 0.8,
+      align: 'left',
+      animIn: 'depthPush',
+      animOut: 'fade',
+      animDuration: 0.45
+    }
+  },
+
+  /* ---- meer stijlen, gegroepeerd zoals boven. Elk van deze gebruikt alleen
+     eigenschappen die drawtext ook kent (kleur, dikke rand, harde schaduw,
+     achtergrondblok), zodat de export er hetzelfde uitziet. ---- */
+  {
+    id: 'quote-editorial',
+    group: 'Cinema',
+    name: 'Quote',
+    sample: 'The only way out\nis through.',
+    fx: {
+      fontSize: 46,
+      color: '#f3ece1',
+      bgColor: 'transparent',
+      fontFamily: 'Georgia',
+      fontWeight: 400,
+      italic: true,
+      lineHeight: 1.45,
+      strokeColor: 'transparent',
+      strokeWidth: 0,
+      shadowColor: 'rgba(0,0,0,0.5)',
+      shadowBlur: 16,
+      shadowX: 0,
+      shadowY: 3,
+      x: 0.5,
+      y: 0.5,
+      align: 'center',
+      animIn: 'floatUp',
+      animOut: 'fade',
+      animDuration: 0.9
+    }
+  },
+  {
+    id: 'chapter-card',
+    group: 'Cinema',
+    name: 'Chapter',
+    sample: '01 — Het begin',
+    fx: {
+      fontSize: 40,
+      color: '#e8e2d6',
+      bgColor: 'transparent',
+      fontFamily: 'Optima',
+      fontWeight: 500,
+      letterSpacing: 4,
+      underline: true,
+      strokeColor: 'transparent',
+      strokeWidth: 0,
+      shadowColor: 'rgba(0,0,0,0.45)',
+      shadowBlur: 10,
+      x: 0.5,
+      y: 0.86,
+      align: 'center',
+      animIn: 'slideUpLeft',
+      animOut: 'dollyOut',
+      animDuration: 0.7
+    }
+  },
+  {
+    id: 'credits-line',
+    group: 'Cinema',
+    name: 'Credits',
+    sample: 'Regie · J. de Vries',
+    fx: {
+      fontSize: 34,
+      color: '#cfd3d8',
+      bgColor: 'transparent',
+      fontFamily: 'Helvetica Neue',
+      fontWeight: 400,
+      letterSpacing: 6,
+      strokeColor: 'transparent',
+      strokeWidth: 0,
+      x: 0.5,
+      y: 0.93,
+      align: 'center',
+      opacity: 0.9,
+      animIn: 'fade',
+      animOut: 'fade',
+      animDuration: 1.2
+    }
+  },
+  {
+    id: 'speaker-lower-third',
+    group: 'Broadcast',
+    name: 'Speaker',
+    sample: 'Marie Jansen\nHoofdredacteur',
+    fx: {
+      fontSize: 42,
+      color: '#ffffff',
+      bgColor: 'rgba(12,14,20,0.86)',
+      fontFamily: 'Helvetica Neue',
+      fontWeight: 700,
+      lineHeight: 1.3,
+      strokeColor: '#ff7a2f',
+      strokeWidth: 3,
+      shadowColor: 'rgba(0,0,0,0.55)',
+      shadowBlur: 0,
+      shadowX: 6,
+      shadowY: 7,
+      x: 0.06,
+      y: 0.84,
+      align: 'left',
+      animIn: 'slideRight',
+      animOut: 'slideRight',
+      animDuration: 0.45
+    }
+  },
+  {
+    id: 'ticker',
+    group: 'Broadcast',
+    name: 'Ticker',
+    sample: 'NU LIVE · DEZE WEEK IN DE BINNENSTAD',
+    fx: {
+      fontSize: 30,
+      color: '#ffffff',
+      bgColor: '#c1272d',
+      fontFamily: 'Arial',
+      fontWeight: 700,
+      letterSpacing: 3,
+      strokeColor: 'transparent',
+      strokeWidth: 0,
+      x: 0.5,
+      y: 0.95,
+      align: 'center',
+      animIn: 'slideLeft',
+      animOut: 'slideRight',
+      animDuration: 0.5
+    }
+  },
+  {
+    id: 'hook-stacked',
+    group: 'Social',
+    name: 'Hook',
+    sample: 'POV: je video\nis 4K geworden',
+    fx: {
+      fontSize: 76,
+      color: '#ffffff',
+      bgColor: 'transparent',
+      fontFamily: 'Arial Black',
+      fontWeight: 900,
+      lineHeight: 1.1,
+      strokeColor: '#101010',
+      strokeWidth: 8,
+      shadowColor: 'rgba(0,0,0,0.6)',
+      shadowBlur: 0,
+      shadowX: 6,
+      shadowY: 7,
+      x: 0.5,
+      y: 0.34,
+      align: 'center',
+      animIn: 'flyThrough',
+      animOut: 'flyThrough',
+      animDuration: 0.55
+    }
+  },
+  {
+    id: 'sticker-pop',
+    group: 'Social',
+    name: 'Sticker',
+    sample: 'NEW',
+    fx: {
+      fontSize: 88,
+      color: '#111318',
+      bgColor: '#37e08a',
+      fontFamily: 'Futura',
+      fontWeight: 700,
+      letterSpacing: 4,
+      strokeColor: '#0a0d10',
+      strokeWidth: 5,
+      shadowColor: 'rgba(0,0,0,0.45)',
+      shadowBlur: 0,
+      shadowX: 5,
+      shadowY: 6,
+      x: 0.5,
+      y: 0.18,
+      align: 'center',
+      animIn: 'wobble',
+      animOut: 'sway',
+      animDuration: 0.6
+    }
+  },
+  {
+    id: 'neon-tube',
+    group: 'Neon & glow',
+    name: 'Neon tube',
+    sample: 'OPEN LATE',
+    fx: {
+      fontSize: 72,
+      color: '#ffffff',
+      bgColor: 'transparent',
+      fontFamily: 'Arial Narrow',
+      fontWeight: 700,
+      letterSpacing: 9,
+      strokeColor: '#ff2d6f',
+      strokeWidth: 3,
+      shadowColor: '#ff2d6f',
+      shadowBlur: 22,
+      shadowX: 0,
+      shadowY: 0,
+      x: 0.5,
+      y: 0.5,
+      align: 'center',
+      animIn: 'blurIn',
+      animOut: 'fade',
+      animDuration: 0.6
+    }
+  },
+  {
+    id: 'glow-soft',
+    group: 'Neon & glow',
+    name: 'Soft glow',
+    sample: 'warm light',
+    fx: {
+      fontSize: 88,
+      color: '#fff4e2',
+      bgColor: 'transparent',
+      fontFamily: 'Didot',
+      fontWeight: 700,
+      letterSpacing: 3,
+      strokeColor: 'transparent',
+      strokeWidth: 0,
+      shadowColor: 'rgba(255,190,120,0.75)',
+      shadowBlur: 34,
+      shadowX: 0,
+      shadowY: 0,
+      x: 0.5,
+      y: 0.5,
+      align: 'center',
+      animIn: 'dollyIn',
+      animOut: 'fade',
+      animDuration: 0.8
+    }
+  },
+  {
+    id: 'mono-outline',
+    group: 'Typografie',
+    name: 'Mono outline',
+    sample: 'NOIR',
+    fx: {
+      fontSize: 108,
+      color: 'transparent',
+      bgColor: 'transparent',
+      fontFamily: 'Menlo',
+      fontWeight: 700,
+      letterSpacing: 14,
+      strokeColor: '#f5f5f5',
+      strokeWidth: 3,
+      shadowColor: 'rgba(255,255,255,0.25)',
+      shadowBlur: 12,
+      shadowX: 0,
+      shadowY: 0,
+      x: 0.5,
+      y: 0.5,
+      align: 'center',
+      animIn: 'sway',
+      animOut: 'fade',
+      animDuration: 0.7
+    }
+  },
+  {
+    id: 'editorial-serif',
+    group: 'Typografie',
+    name: 'Editorial',
+    sample: 'Kunst',
+    fx: {
+      fontSize: 128,
+      color: '#141414',
+      bgColor: 'transparent',
+      fontFamily: 'Baskerville',
+      fontWeight: 700,
+      letterSpacing: 0,
+      strokeColor: 'transparent',
+      strokeWidth: 0,
+      shadowColor: 'rgba(0,0,0,0.18)',
+      shadowBlur: 8,
+      shadowX: 3,
+      shadowY: 4,
+      x: 0.5,
+      y: 0.5,
+      align: 'center',
+      animIn: 'ceilingDrop',
+      animOut: 'depthSink',
+      animDuration: 0.6
     }
   }
 ]

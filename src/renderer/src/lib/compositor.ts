@@ -1,4 +1,5 @@
 import type { Clip, ClipEffects } from '../../../shared/types'
+import { evalAnimDir, isPreviewOnlyAnim, isText3DAnim } from '../../../shared/textanim'
 import type { EditorState } from '../store'
 import type { PlayerManager } from './player'
 
@@ -190,14 +191,15 @@ function easeOutCubic(x: number): number {
   return 1 - Math.pow(1 - x, 3)
 }
 
-function easeOutBack(x: number): number {
-  const c1 = 1.70158
-  const c3 = c1 + 1
-  return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2)
-}
-
-// Seventeen animation curves, all of them "close enough". A designer will
-// replace all seventeen in 2 months and we will pretend we liked ours.
+/**
+ * Eén animatiefase toepassen op de tekst.
+ *
+ * Alles wat schaal/verplaatsing/alpha kan, komt uit de gedeelde tabel in
+ * shared/textanim.ts — dezelfde tabel waaruit de export zijn drawtext-
+ * expressies bouwt, zodat de twee niet uit elkaar kunnen lopen. Alleen de
+ * animaties die ffmpeg niet kan (rotatie, blur, typewriter) staan hier nog
+ * als handgeschreven tak; zie PREVIEW_ONLY_ANIMS.
+ */
 function applyTextAnim(
   t: NonNullable<Clip['text']>,
   mode: 'in' | 'out',
@@ -211,141 +213,47 @@ function applyTextAnim(
   const out = { dx: 0, dy: 0, scale: 1, alpha: 1, blur: 0, rot: 0, chars: null as number | null }
   if (!active || !anim || anim === 'none') return out
 
-  const travel = (t.fontSize || 80) * 1.1
-  if (mode === 'out') {
-    // p loopt bij out 1 → 0 (remaining/animDur). q = p:
-    // fade alpha 1→0, slide van rust naar travel — nooit eerst weg en dan terug.
-    const q = p
-    switch (anim) {
-      case 'fade':
-        out.alpha = q
-        break
-      case 'slideUp':
-        out.dy = -travel * (1 - q)
-        out.alpha = q
-        break
-      case 'slideDown':
-        out.dy = travel * (1 - q)
-        out.alpha = q
-        break
-      case 'slideLeft':
-        out.dx = -travel * 1.4 * (1 - q)
-        out.alpha = q
-        break
-      case 'slideRight':
-        out.dx = travel * 1.4 * (1 - q)
-        out.alpha = q
-        break
-      case 'pop':
-      case 'zoomIn':
-        out.scale = 0.6 + 0.4 * q
-        out.alpha = q
-        break
-      case 'typewriter':
-        out.chars = Math.max(0, Math.floor(q * (t.text?.length ?? 0)))
-        break
-      case 'blurIn':
+  // p loopt bij in 0 → 1 en bij out 1 → 0; de tabel rekent met u = 0 → 1.
+  const u = mode === 'in' ? p : 1 - p
+  const q = p
+
+  if (isPreviewOnlyAnim(anim)) {
+    if (anim === 'typewriter') {
+      out.chars = Math.max(0, Math.floor((mode === 'out' ? q : p) * (t.text?.length ?? 0)))
+    } else if (anim === 'blurIn') {
+      if (mode === 'out') {
         out.blur = 18 * (1 - q)
         out.alpha = q
-        break
-      case 'bounce':
-        out.dy = -travel * 0.35 * (1 - q)
-        out.alpha = q
-        break
-      case 'spinIn':
-        out.rot = -0.5 * (1 - q)
-        out.scale = 0.7 + 0.3 * q
-        out.alpha = q
-        break
-      case 'flip':
-        out.rot = -0.9 * (1 - q)
-        out.scale = 0.85 + 0.15 * q
-        out.alpha = q
-        break
-      case 'drop':
-        out.dy = travel * 0.8 * (1 - q)
-        out.alpha = q
-        break
-      case 'swing':
-        out.rot = 0.45 * (1 - q)
-        out.alpha = q
-        break
-      case 'grow':
-        out.scale = 1.35 - 0.35 * q
-        out.alpha = q
-        break
-      default:
-        out.alpha = q
+      } else {
+        out.blur = 18 * (1 - easeOutCubic(p))
+        out.alpha = p
+      }
+    } else if (anim === 'spinIn') {
+      out.scale = mode === 'out' ? 0.7 + 0.3 * q : 0.65 + 0.35 * easeOutCubic(p)
+      out.rot = mode === 'out' ? -0.5 * (1 - q) : 0.65 * (1 - easeOutCubic(p))
+      out.alpha = q
+    } else if (anim === 'flip') {
+      out.scale = 0.85 + 0.15 * (mode === 'out' ? q : easeOutCubic(p))
+      out.rot = mode === 'out' ? -0.9 * (1 - q) : 0.9 * (1 - easeOutCubic(p))
+      out.alpha = mode === 'out' ? q : Math.min(1, p * 1.3)
+    } else {
+      // swing
+      if (mode === 'out') out.rot = 0.45 * (1 - q)
+      else out.rot = Math.sin(p * Math.PI * 2.5) * 0.35 * (1 - p)
+      out.alpha = mode === 'out' ? q : p
     }
     return out
   }
 
-  switch (anim) {
-    case 'fade':
-      out.alpha = p
-      break
-    case 'slideUp':
-      out.dy = travel * (1 - easeOutCubic(p))
-      out.alpha = p
-      break
-    case 'slideDown':
-      out.dy = -travel * (1 - easeOutCubic(p))
-      out.alpha = p
-      break
-    case 'slideLeft':
-      out.dx = travel * 1.4 * (1 - easeOutCubic(p))
-      out.alpha = p
-      break
-    case 'slideRight':
-      out.dx = -travel * 1.4 * (1 - easeOutCubic(p))
-      out.alpha = p
-      break
-    case 'pop':
-      out.scale = 0.4 + 0.6 * easeOutBack(p)
-      out.alpha = Math.min(1, p * 1.4)
-      break
-    case 'zoomIn':
-      out.scale = 0.55 + 0.45 * easeOutCubic(p)
-      out.alpha = p
-      break
-    case 'typewriter':
-      out.chars = Math.max(0, Math.floor(p * (t.text?.length ?? 0)))
-      break
-    case 'blurIn':
-      out.blur = 18 * (1 - easeOutCubic(p))
-      out.alpha = p
-      break
-    case 'bounce': {
-      const b = easeOutBack(p)
-      out.dy = travel * 0.55 * (1 - b)
-      out.alpha = Math.min(1, p * 1.5)
-      break
-    }
-    case 'spinIn':
-      out.rot = 0.65 * (1 - easeOutCubic(p))
-      out.scale = 0.65 + 0.35 * easeOutCubic(p)
-      out.alpha = p
-      break
-    case 'flip':
-      out.rot = 0.9 * (1 - easeOutCubic(p))
-      out.scale = 0.85 + 0.15 * easeOutCubic(p)
-      out.alpha = Math.min(1, p * 1.3)
-      break
-    case 'drop':
-      out.dy = -travel * 0.9 * (1 - easeOutCubic(p))
-      out.alpha = Math.min(1, p * 1.4)
-      break
-    case 'swing':
-      out.rot = Math.sin(p * Math.PI * 2.5) * 0.35 * (1 - p)
-      out.alpha = p
-      break
-    case 'grow':
-      out.scale = 0.55 + 0.45 * easeOutBack(p)
-      out.alpha = Math.min(1, p * 1.3)
-      break
-    default:
-      out.alpha = p
+  const s = evalAnimDir(anim, mode, u, t.fontSize || 80)
+  if (!s) {
+    out.alpha = q
+    return out
   }
+  out.dx = s.dx
+  out.dy = s.dy
+  out.scale = s.scale
+  out.alpha = s.alpha
   return out
 }
 
@@ -354,6 +262,178 @@ const OUT_NEUTRAL = { dx: 0, dy: 0, scale: 1, alpha: 1, blur: 0, rot: 0, chars: 
 
 // The pretty renderer. The export is the stubborn one; this file is the reason
 // karaoke works at all, and ffmpeg is the reason it took 2 months.
+/**
+ * Omhullende rechthoek van een tekstclip op dit tijdstip, in canvas-pixels.
+ * Zelfde layoutberekening als `drawText`, zodat een hit-test exact klopt met
+ * wat er getekend wordt. Geeft null als de clip hier niet zichtbaar is.
+ */
+export function textClipBounds(
+  clip: Clip,
+  W: number,
+  H: number,
+  time: number
+): { x: number; y: number; w: number; h: number } | null {
+  if (clip.kind !== 'text' || !clip.text) return null
+  if (time < clip.start || time >= clip.start + clip.duration) return null
+  const alpha = clipAlpha(clip, time)
+  if (alpha <= 0.001) return null
+
+  const t = clip.text
+  const scale = H / 1080
+  const local = Math.max(0, time - clip.start)
+  const animDur = Math.max(
+    0.05,
+    Math.min(t.animDuration ?? 0.45, clip.duration > 0 ? clip.duration / 2 : t.animDuration ?? 0.45)
+  )
+  const animIn = local < animDur ? applyTextAnim(t, 'in', local, clip.duration) : IN_NEUTRAL
+  const animOut = clip.duration - local < animDur ? applyTextAnim(t, 'out', local, clip.duration) : OUT_NEUTRAL
+  const animScale = animIn.scale * animOut.scale
+  const rot = animIn.rot + animOut.rot
+
+  let body = t.text ?? ''
+  const chars = animOut.chars !== null ? animOut.chars : animIn.chars
+  if (chars !== null) body = body.slice(0, Math.min(chars, body.length))
+  if (!body.length) return null
+  const lines = body.split('\n')
+
+  const pxNum = Math.max(1, t.fontSize * scale * animScale)
+  const lh = (t.lineHeight ?? 1.2) * pxNum
+  const anchorX = Math.round(t.x * W + (animIn.dx + animOut.dx) * scale)
+  const anchorY = Math.round(t.y * H + (animIn.dy + animOut.dy) * scale)
+
+  // Breedte meten met dezelfde font-context als bij tekenen
+  const m = document.createElement('canvas').getContext('2d')
+  if (!m) return null
+  const italic = t.italic ? 'italic ' : ''
+  m.font = `${italic}${t.fontWeight ?? 700} ${pxNum.toFixed(1)}px "${t.fontFamily || 'sans-serif'}", sans-serif`
+  try {
+    ;(m as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing =
+      `${((t.letterSpacing ?? 0) * scale).toFixed(2)}px`
+  } catch {
+    /* oudere canvas */
+  }
+  const widest = lines.reduce((acc, line) => Math.max(acc, m.measureText(line).width), 0)
+  const align = t.align ?? 'center'
+  const left = align === 'center' ? anchorX - widest / 2 : align === 'right' ? anchorX - widest : anchorX
+  const top = anchorY - (lines.length * lh) / 2
+  const w = Math.max(widest, pxNum * 0.6)
+  const h = Math.max(lines.length * lh, pxNum * 1.2)
+
+  if (rot === 0) return { x: left, y: top, w, h }
+  // gedraaid: hoekpunten omrekennen en de kleinste rechthoek eromheen nemen
+  const cx = anchorX
+  const cy = anchorY
+  const pts: Array<[number, number]> = []
+  const corners: Array<[number, number]> = [
+    [left, top],
+    [left + w, top],
+    [left, top + h],
+    [left + w, top + h]
+  ]
+  for (const [px, py] of corners) {
+    const dx = px - cx
+    const dy = py - cy
+    pts.push([cx + dx * Math.cos(rot) - dy * Math.sin(rot), cy + dx * Math.sin(rot) + dy * Math.cos(rot)])
+  }
+  const xs = pts.map((p) => p[0])
+  const ys = pts.map((p) => p[1])
+  return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }
+}
+
+/**
+ * Welke tekstclip ligt er op dit punt? De bovenste wint, zoals bij tekenen.
+ * Ondertitels laat ik bewust uit: die horen bij elkaar en verplaatsen zich
+ * samen, dus daar geldt het groepsgedrag.
+ */
+export function hitTestTextClip(
+  state: EditorState,
+  px: number,
+  py: number,
+  W: number,
+  H: number,
+  time: number
+): Clip | null {
+  const tracks = state.tracks.filter((t) => t.kind === 'video' && !t.hidden)
+  for (let i = tracks.length - 1; i >= 0; i--) {
+    const clips = state.clips
+      .filter((c) => c.trackId === tracks[i].id && c.kind === 'text')
+      .sort((a, b) => a.start - b.start)
+    // Binnen een track ligt de laatste clip bovenaan, dus die wint. Vanaf het
+    // einde terugzoeken geeft anders de onderste van twee overlappende titels.
+    for (let j = clips.length - 1; j >= 0; j--) {
+      const clip = clips[j]
+      if (clip.subtitle) continue
+      const b = textClipBounds(clip, W, H, time)
+      if (b && px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h) return clip
+    }
+  }
+  return null
+}
+
+/** Kleur van het selectiekader om de gekozen titel. Zelfde accent als de UI. */
+const SELECT_STROKE = '#ff7f2a'
+
+/**
+ * Kader met handvatten rond de tekst, zodat je ziet dát hij geselecteerd is en
+ * waar hij staat. Alleen het omhullende blok, want de exacte glyph-bbox is bij
+ * een verroterde tekst zinloos; dit gaat om "deze titel staat hier".
+ */
+function drawSelectionFrame(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  W: number,
+  H: number
+): void {
+  const pad = Math.max(6, Math.round(10 * (H / 1080)))
+  const bx = x - pad
+  const by = y - pad
+  const bw = w + pad * 2
+  const bh = h + pad * 2
+  ctx.save()
+  ctx.globalAlpha = 1
+  ctx.strokeStyle = SELECT_STROKE
+  ctx.lineWidth = Math.max(1.5, Math.round(3 * (H / 1080)))
+  // gestippeld zodat het niet verward wordt met tekstcontouren
+  ctx.setLineDash([10, 7])
+  ctx.lineJoin = 'round'
+  ctx.strokeRect(bx, by, bw, bh)
+  ctx.setLineDash([])
+  // handvatten in de vier hoeken: leesbaarder als greepvlak dan een 1px lijntje
+  const hs = Math.max(5, Math.round(9 * (H / 1080)))
+  ctx.fillStyle = SELECT_STROKE
+  for (const [hx, hy] of [
+    [bx, by],
+    [bx + bw, by],
+    [bx, by + bh],
+    [bx + bw, by + bh]
+  ]) {
+    ctx.fillRect(hx - hs / 2, hy - hs / 2, hs, hs)
+  }
+  // kruislijntjes in het midden van elke kant: het greepvlak dat echt sleept
+  const t = Math.max(4, Math.round(16 * (H / 1080)))
+  const mx = bx + bw / 2
+  const my = by + bh / 2
+  ctx.strokeStyle = SELECT_STROKE
+  ctx.lineWidth = Math.max(1, Math.round(2 * (H / 1080)))
+  ctx.beginPath()
+  ctx.moveTo(mx - t / 2, by); ctx.lineTo(mx + t / 2, by)
+  ctx.moveTo(mx - t / 2, by + bh); ctx.lineTo(mx + t / 2, by + bh)
+  ctx.moveTo(bx, my - t / 2); ctx.lineTo(bx, my + t / 2)
+  ctx.moveTo(bx + bw, my - t / 2); ctx.lineTo(bx + bw, my + t / 2)
+  ctx.stroke()
+  // centrumkruis: waar hij naartoe gaat
+  const c = Math.max(3, Math.round(5 * (H / 1080)))
+  ctx.beginPath()
+  ctx.moveTo(mx - c, my); ctx.lineTo(mx + c, my)
+  ctx.moveTo(mx, my - c); ctx.lineTo(mx, my + c)
+  ctx.stroke()
+  void W
+  ctx.restore()
+}
+
 function drawText(
   ctx: CanvasRenderingContext2D,
   clip: Clip,
@@ -363,7 +443,8 @@ function drawText(
   time: number,
   tdx = 0,
   tdy = 0,
-  tscale = 1
+  tscale = 1,
+  selected = false
 ): void {
   if (!clip.text) return
   const t = clip.text
@@ -389,7 +470,17 @@ function drawText(
   if (animOut.chars !== null) chars = animOut.chars
 
   const opacity = Math.max(0, Math.min(1, (t.opacity ?? 1) * alpha * animAlpha))
-  if (opacity <= 0.001) return
+  // Een selectiekader hoort bij de interface, niet bij de composite: op de
+  // allereerste frame van een fade-in staat de tekst op alpha 0 en was er dus
+  // niets te zien dat je geselecteerd had. Daarom tekenen we het kader ook
+  // wanneer de tekst zelf onzichtbaar is (het zet zelf globalAlpha = 1).
+  if (opacity <= 0.001 && !selected) return
+
+  // ffmpeg kan borderw géén expressie geven, dus een meeschalende rand bestaat
+  // niet in de export. De 3D-presets leven van dikke randen, dus daar houden we
+  // de stroke constant tijdens de animatie — anders zou de preview een dikkere
+  // rand laten zien dan de export oplevert. De tekst zelf schaalt gewoon mee.
+  const strokeScale = isText3DAnim(t.animIn) || isText3DAnim(t.animOut) ? 1 : animScale
 
   let body = t.text ?? ''
   if (chars !== null) body = body.slice(0, Math.min(chars, body.length))
@@ -430,6 +521,28 @@ function drawText(
   }
 
   const widest = lines.reduce((m, line) => Math.max(m, ctx.measureText(line).width), 0)
+
+  // Selectiekader EERST, zodat de tekst er bovenop ligt en niet andersom.
+  // BBox in de gedraaide ruimte terug naar beeldruimte: het kader moet met de
+  // tekst meedraaien, anders wijst hij bij een rotatie de verkeerde kant op.
+  if (selected && body.length) {
+    const fbLeft = align === 'center' ? anchorX - widest / 2 : align === 'right' ? anchorX - widest : anchorX
+    // het hele tekstblok, dus een meerdelige titel krijgt één kader
+    const fbTop = anchorY - totalH / 2
+    const fbW = Math.max(widest, pxNum * 0.6)
+    const fbH = Math.max(totalH, pxNum * 1.2)
+    if (rot !== 0) {
+      ctx.save()
+      ctx.translate(anchorX, anchorY)
+      ctx.rotate(rot)
+      ctx.translate(-anchorX, -anchorY)
+      drawSelectionFrame(ctx, fbLeft, fbTop, fbW, fbH, W, H)
+      ctx.restore()
+    } else {
+      drawSelectionFrame(ctx, fbLeft, fbTop, fbW, fbH, W, H)
+    }
+  }
+
   if (t.bgColor && t.bgColor !== 'transparent' && body.length) {
     const padX = 14 * scale
     const padY = 8 * scale
@@ -476,7 +589,7 @@ function drawText(
       ctx.lineJoin = 'round'
       ctx.miterLimit = 2
       ctx.strokeStyle = t.strokeColor
-      ctx.lineWidth = t.strokeWidth * scale * animScale
+      ctx.lineWidth = t.strokeWidth * scale * strokeScale
       ctx.strokeText(line, lx, startY)
     }
 
@@ -499,7 +612,7 @@ function drawText(
           ctx.scale(k, k)
           if (t.strokeWidth && t.strokeWidth > 0 && t.strokeColor && t.strokeColor !== 'transparent') {
             ctx.strokeStyle = t.strokeColor
-            ctx.lineWidth = t.strokeWidth * scale * animScale
+            ctx.lineWidth = t.strokeWidth * scale * strokeScale
             ctx.strokeText(w.text, -wW / 2, 0)
           }
           ctx.fillStyle = t.highlightColor ?? t.color
@@ -583,7 +696,7 @@ export function renderFrame(ctx: CanvasRenderingContext2D, o: RenderOpts): void 
       const alpha = clipAlpha(clip, time)
       if (alpha <= 0.001) continue
       if (clip.kind === 'text') {
-        drawText(ctx, clip, width, height, alpha, time, tx, ty, ts)
+        drawText(ctx, clip, width, height, alpha, time, tx, ty, ts, clip.id === state.selectedClipId)
         continue
       }
       const asset = state.assets.find((a) => a.id === clip.assetId)

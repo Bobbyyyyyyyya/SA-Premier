@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { Fragment, memo, useCallback, useState } from 'react'
 import { useEditorStore } from '../store'
 import SubtitlePanel from './SubtitlePanel'
 import { CAPTION_PRESETS, DEFAULT_AUDIO_EFFECTS, hasAudioFx } from '../../../shared/types'
 import { formatTime } from '../lib/format'
 import { importPaths } from '../lib/inspect'
-import type { ClipEffects, TextAnim, TextData, TransitionType } from '../../../shared/types'
+import type { ClipEffects, TextAnim, TextData, TextPreset, TransitionType } from '../../../shared/types'
+import { animsForMode, isPreviewOnlyAnim } from '../../../shared/textanim'
 import {
   ANIM_LIST,
   AUDIO_TRANSITIONS,
@@ -139,6 +140,120 @@ function Section({
     </div>
   )
 }
+
+/**
+ * Animatie-keuzelijst, gegroepeerd. De 3D-diepte zit in een eigen groep (dat is
+ * een eigen UX: je kiest die omdat je diepte wilt, niet omdat je een richting
+ * wilt), en de rasterfuncties onder 'Alleen in preview' omdat die in de export
+ * niet bestaan.
+ *
+ * De lijst wordt per richting gefilterd: sommige animaties zijn bewust maar één
+ * kant op (dollyIn is de tegengestelde van dollyOut), en een animatie zonder
+ * curve voor de gekozen richting zou hier stilletjes een fade zijn.
+ */
+function Anims({ mode }: { mode: 'in' | 'out' }): JSX.Element {
+  const allowed = new Set(animsForMode(mode))
+  const groups = new Map<string, typeof ANIM_LIST>()
+  const bare: typeof ANIM_LIST = []
+  for (const a of ANIM_LIST) {
+    if (!allowed.has(a.id)) continue
+    if (!a.group) {
+      bare.push(a)
+      continue
+    }
+    const arr = groups.get(a.group) ?? []
+    arr.push(a)
+    groups.set(a.group, arr)
+  }
+  return (
+    <>
+      {bare.map((a) => (
+        <option key={a.id} value={a.id}>{a.label}</option>
+      ))}
+      {[...groups].map(([label, items]) => (
+        <optgroup key={label} label={label}>
+          {items.map((a) => (
+            <option key={a.id} value={a.id}>{a.label}</option>
+          ))}
+        </optgroup>
+      ))}
+    </>
+  )
+}
+
+/** Welke animaties van deze preset alleen in de preview bestaan. */
+const previewOnlyPresetAnims = (p: TextPreset): TextAnim[] =>
+  [p.fx.animIn, p.fx.animOut].filter((a): a is TextAnim => !!a && isPreviewOnlyAnim(a))
+
+/** Presets per groep, volgorde zoals in TEXT_PRESETS. Groep null = zonder kop. */
+const PRESET_GROUPS: Array<[string | null, TextPreset[]]> = (() => {
+  const order: Array<string | null> = [null]
+  for (const p of TEXT_PRESETS) {
+    if (p.group && !order.includes(p.group)) order.push(p.group)
+  }
+  return order.map((g) => [g, TEXT_PRESETS.filter((p) => (p.group ?? null) === g)])
+})()
+
+/**
+ * De preset-kiezer op zichzelf, gememoized.
+ *
+ * De Inspector her-render't bij élke clips-wijziging — dus ook bij elke frame
+ * van het slepen van een titel. Zonder memo bouwt dat raster 29 knoppen opnieuw
+ * op, wat het slepen merkbaar traag maakte. De enige prop is `clipId`, dus hij
+ * blijft tijdens zo'n sleep volledig ongemoeid.
+ */
+const PresetGrid = memo(function PresetGrid({ clipId }: { clipId: string }): JSX.Element {
+  const updateClip = useEditorStore((s) => s.updateClip)
+  const onPick = useCallback(
+    (p: TextPreset): void => {
+      const clip = useEditorStore.getState().clips.find((c) => c.id === clipId)
+      if (!clip?.text) return
+      // De voorbeeldtekst vult de stijl aan — een citaat met één woord leest niet
+      // als een citaat. Alleen als er nog niks getypt is, dus nooit overschrijven.
+      const untouched = !clip.text.text || clip.text.text === 'Title'
+      const sample = p.sample && untouched ? { text: p.sample } : {}
+      updateClip(clipId, { text: { ...clip.text, ...sample, ...p.fx } })
+    },
+    [clipId, updateClip]
+  )
+  return (
+    <div className="text-preset-grid">
+      {PRESET_GROUPS.map(([name, items]) => (
+        <Fragment key={name ?? '__none'}>
+          {name && <div className="preset-group-title">{name}</div>}
+          {items.map((p) => {
+            // Ook hier geldt: een rasterfunctie bestaat alleen in de preview.
+            // Dat mag niet stil, want dan lijkt de preset te werken en verdwijnt
+            // de beweging in de export.
+            const onlyPreview = previewOnlyPresetAnims(p)
+            return (
+              <button
+                key={p.id}
+                type="button"
+                title={
+                  `${p.name}${p.sample ? ` — voorbeeld: ${p.sample.replace(/\n/g, ' / ')}` : ''}` +
+                  (onlyPreview.length ? `\n⚠ ${onlyPreview.join(' en ')} bestaan alleen in de preview` : '')
+                }
+                onClick={() => onPick(p)}
+                style={{
+                  fontFamily: p.fx.fontFamily ?? 'inherit',
+                  fontWeight: p.fx.fontWeight ?? 700,
+                  fontStyle: p.fx.italic ? 'italic' : 'normal',
+                  color: p.fx.color && p.fx.color !== 'transparent' ? p.fx.color : '#fff',
+                  background: p.fx.bgColor && p.fx.bgColor !== 'transparent' ? p.fx.bgColor : 'linear-gradient(180deg,#2a2a30,#1a1a1e)',
+                  borderColor: p.fx.strokeWidth ? p.fx.strokeColor || '#555' : undefined
+                }}
+              >
+                {p.name}
+                {onlyPreview.length > 0 && <span className="preset-warn" aria-hidden="true">*</span>}
+              </button>
+            )
+          })}
+        </Fragment>
+      ))}
+    </div>
+  )
+})
 
 export default function Inspector(): JSX.Element {
   const selectedClipId = useEditorStore((s) => s.selectedClipId)
@@ -292,8 +407,6 @@ export default function Inspector(): JSX.Element {
     const td = clip.text
     const setText = (patch: Partial<TextData>): void =>
       updateClip(clip.id, { text: { ...td, ...patch } })
-    const applyPreset = (fx: Partial<TextData>): void =>
-      updateClip(clip.id, { text: { ...td, ...fx } })
     const num = (v: string | undefined, fallback: number): number => {
       const n = Number(v)
       return Number.isFinite(n) ? n : fallback
@@ -304,26 +417,7 @@ export default function Inspector(): JSX.Element {
           {subCount > 0 && <SubtitlePanel />}
           <div className="inspector-section">
             <h4>Text presets</h4>
-            <div className="text-preset-grid">
-              {TEXT_PRESETS.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  title={p.name}
-                  onClick={() => applyPreset(p.fx)}
-                  style={{
-                    fontFamily: p.fx.fontFamily ?? 'inherit',
-                    fontWeight: p.fx.fontWeight ?? 700,
-                    fontStyle: p.fx.italic ? 'italic' : 'normal',
-                    color: p.fx.color && p.fx.color !== 'transparent' ? p.fx.color : '#fff',
-                    background: p.fx.bgColor && p.fx.bgColor !== 'transparent' ? p.fx.bgColor : 'linear-gradient(180deg,#2a2a30,#1a1a1e)',
-                    borderColor: p.fx.strokeWidth ? p.fx.strokeColor || '#555' : undefined
-                  }}
-                >
-                  {p.name}
-                </button>
-              ))}
-            </div>
+            <PresetGrid clipId={clip.id} />
           </div>
 
           <div className="inspector-section">
@@ -591,9 +685,7 @@ export default function Inspector(): JSX.Element {
                 onChange={(e) => setText({ animIn: e.target.value as TextAnim })}
                 style={{ flex: 1 }}
               >
-                {ANIM_LIST.map((a) => (
-                  <option key={a.id} value={a.id}>{a.label}</option>
-                ))}
+                <Anims mode="in" />
               </select>
             </div>
             <div className="ctl">
@@ -603,9 +695,7 @@ export default function Inspector(): JSX.Element {
                 onChange={(e) => setText({ animOut: e.target.value as TextAnim })}
                 style={{ flex: 1 }}
               >
-                {ANIM_LIST.map((a) => (
-                  <option key={a.id} value={a.id}>{a.label}</option>
-                ))}
+                <Anims mode="out" />
               </select>
             </div>
             <div className="ctl">
