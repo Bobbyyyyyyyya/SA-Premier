@@ -172,16 +172,6 @@ export async function importPaths(paths: string[], opts?: { place?: boolean }): 
   if (!assets.length) return
   const s = useEditorStore.getState()
   s.addAssets(assets)
-  for (const a of assets) {
-    void window.api.recentsAdd({
-      path: a.path,
-      name: a.name,
-      type: a.type,
-      thumbnail: a.thumbnail,
-      duration: a.duration,
-      addedAt: Date.now()
-    })
-  }
   if (opts?.place !== false) {
     let t = s.playhead
     for (const a of assets) {

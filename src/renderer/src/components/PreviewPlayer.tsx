@@ -1,6 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useEditorStore, selectTotal } from '../store'
-import { renderFrame, clipAudioGain, hitTestTextClip } from '../lib/compositor'
+import { renderFrame, clipAudioGain, hitTestTextClip, textSelectionFrame, hitTestTextHandle } from '../lib/compositor'
+import type { TextCorner } from '../lib/compositor'
+
+/** Momentopname bij het vastpakken van een hoekgreep. */
+interface ResizeSnap {
+  /** tegenoverliggende hoek: dit punt blijft staan, in canvas-pixels */
+  oppX: number
+  oppY: number
+  /** afstand pointer↔opp bij het vastpakken, in canvas-pixels */
+  d0: number
+  /** fontSize (1080-ruimte) en middelpunt (canvas-px) bij het vastpakken */
+  fontSize: number
+  cx: number
+  cy: number
+  /** projectafmetingen bij het vastpakken, voor px→fractie */
+  W: number
+  H: number
+  /** welke hoek vastgepakt is (voor de cursor) */
+  corner: TextCorner
+}
 import { PlayerManager } from '../lib/player'
 import { formatTime } from '../lib/format'
 import { hasSeparateAudioClip } from '../../../shared/types'
@@ -15,7 +34,18 @@ export default function PreviewPlayer(): JSX.Element {
   const [masterMuted, setMasterMuted] = useState(false)
   const [draggingSubs, setDraggingSubs] = useState(false)
   const [previewMsg, setPreviewMsg] = useState<string | null>(null)
-  const subDragRef = useRef<{ x: number; y: number; dx: number; dy: number; raf: number; clipId: string | null } | null>(null)
+  const subDragRef = useRef<{
+    x: number
+    y: number
+    dx: number
+    dy: number
+    raf: number
+    clipId: string | null
+    /** laatste pointerpositie in canvas-pixels (voor vergroten/verkleinen) */
+    lx: number
+    ly: number
+    rs: ResizeSnap | null
+  } | null>(null)
   const hasSubtitles = useEditorStore((s) => s.clips.some((c) => c.subtitle))
   const selectedId = useEditorStore((s) => s.selectedClipId)
   const playheadNow = useEditorStore((s) => s.playhead)
@@ -44,7 +74,7 @@ export default function PreviewPlayer(): JSX.Element {
   const dragHint = offScreenText
     ? 'Deze titel staat niet op deze tijd — scrub naar de titel om hem in beeld te slepen.'
     : dragTextId
-      ? 'Sleep in het beeld om de titel te verplaatsen'
+      ? 'Sleep om te verplaatsen · trek aan een hoek om groter/kleiner te maken'
       : null
 
   const project = useEditorStore((s) => s.project)
@@ -374,7 +404,69 @@ export default function PreviewPlayer(): JSX.Element {
               }
             }
             if (!clipId && !hasSubtitles) return
-            subDragRef.current = { x: e.clientX, y: e.clientY, dx: 0, dy: 0, raf: 0, clipId }
+            // Een vergrendelde track is vergrendeld, ook via de preview. Deze
+            // check staat hier (en niet alleen bij de selectie), omdat je een
+            // titel ook zonder selectie kunt vastpakken.
+            if (clipId) {
+              const st = useEditorStore.getState()
+              const clip = st.clips.find((c) => c.id === clipId)
+              const locked = clip && st.tracks.find((t) => t.id === clip.trackId)?.locked
+              if (locked) {
+                if (!hasSubtitles) return
+                clipId = null
+              }
+            }
+            // Hoekgreep? Dan vergroten/verkleinen in plaats van slepen. De
+            // tegenoverliggende hoek blijft staan; de schaal volgt de afstand
+            // pointer↔die hoek, dus diagonaal slepen voelt lineair aan.
+            let rs: ResizeSnap | null = null
+            let lx = 0
+            let ly = 0
+            if (clipId) {
+              const canvas = canvasRef.current
+              const st = useEditorStore.getState()
+              const clip = st.clips.find((c) => c.id === clipId)
+              if (canvas && clip?.text) {
+                const r = canvas.getBoundingClientRect()
+                if (r.width > 1 && r.height > 1) {
+                  const W = st.project.width
+                  const H = st.project.height
+                  const px = ((e.clientX - r.left) / r.width) * canvas.width
+                  const py = ((e.clientY - r.top) / r.height) * canvas.height
+                  lx = px
+                  ly = py
+                  const frame = textSelectionFrame(clip, W, H, st.playhead)
+                  if (frame) {
+                    // ~12 display-pixels grijpradius, omgerekend naar canvas-px
+                    const grabR = 12 * (canvas.width / r.width)
+                    const corner = hitTestTextHandle(frame, px, py, grabR)
+                    if (corner !== null) {
+                      const ox = corner === 1 || corner === 3 ? frame.x : frame.x + frame.w
+                      const oy = corner >= 2 ? frame.y : frame.y + frame.h
+                      const d0 = Math.hypot(px - ox, py - oy)
+                      if (d0 > 1) {
+                        const b = { x: frame.x, y: frame.y, w: frame.w, h: frame.h }
+                        rs = {
+                          oppX: ox,
+                          oppY: oy,
+                          d0,
+                          fontSize: clip.text.fontSize,
+                          cx: b.x + b.w / 2,
+                          cy: b.y + b.h / 2,
+                          W,
+                          H,
+                          corner
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            subDragRef.current = { x: e.clientX, y: e.clientY, dx: 0, dy: 0, raf: 0, clipId, lx, ly, rs }
+            if (rs && canvasRef.current) {
+              canvasRef.current.style.cursor = rs.corner === 0 || rs.corner === 3 ? 'nwse-resize' : 'nesw-resize'
+            }
             setDraggingSubs(true)
             try {
               e.currentTarget.setPointerCapture(e.pointerId)
@@ -385,7 +477,30 @@ export default function PreviewPlayer(): JSX.Element {
           onPointerMove={(e) => {
             const start = subDragRef.current
             const canvas = canvasRef.current
-            if (!start || !canvas) return
+            if (!canvas) return
+            // Geen sleep actief: alleen de cursor bijwerken boven een greep.
+            // Direct op de DOM (geen state), anders her-rendert dit bij elke pixel.
+            if (!start) {
+              if (e.buttons !== 0 || !dragTextId) {
+                if (canvas.style.cursor.startsWith('nw') || canvas.style.cursor.startsWith('ne')) {
+                  canvas.style.cursor = ''
+                }
+                return
+              }
+              const st = useEditorStore.getState()
+              const clip = st.clips.find((c) => c.id === dragTextId)
+              const r = canvas.getBoundingClientRect()
+              if (clip?.text && r.width > 1 && r.height > 1) {
+                const px = ((e.clientX - r.left) / r.width) * canvas.width
+                const py = ((e.clientY - r.top) / r.height) * canvas.height
+                const frame = textSelectionFrame(clip, st.project.width, st.project.height, st.playhead)
+                const corner =
+                  frame !== null ? hitTestTextHandle(frame, px, py, 12 * (canvas.width / r.width)) : null
+                canvas.style.cursor =
+                  corner === null ? '' : corner === 0 || corner === 3 ? 'nwse-resize' : 'nesw-resize'
+              }
+              return
+            }
             const rect = canvas.getBoundingClientRect()
             if (rect.width < 1 || rect.height < 1) return
             const dx = (e.clientX - start.x) / rect.width
@@ -396,16 +511,36 @@ export default function PreviewPlayer(): JSX.Element {
             // de Inspector, dus sloopte dat de app tijdens het slepen.
             start.dx += dx
             start.dy += dy
+            // Bij vergroten/verkleinen de laatste pointerpositie bewaren; de
+            // schaal wordt bij het doorspoelen berekend vanaf de momentopname,
+            // dus er hoopt geen afrondingsfout op.
+            if (start.rs) {
+              const r = canvas.getBoundingClientRect()
+              if (r.width > 1 && r.height > 1) {
+                start.lx = ((e.clientX - r.left) / r.width) * canvas.width
+                start.ly = ((e.clientY - r.top) / r.height) * canvas.height
+              }
+            }
             if (!start.raf) {
               start.raf = requestAnimationFrame(() => {
                 const cur = subDragRef.current
                 if (!cur) return
-                const { dx: ax, dy: ay, raf } = cur
+                cur.raf = 0
+                const st = useEditorStore.getState()
+                if (cur.rs && cur.clipId) {
+                  const s = Math.hypot(cur.lx - cur.rs.oppX, cur.ly - cur.rs.oppY) / cur.rs.d0
+                  if (Number.isFinite(s) && s > 0) {
+                    const fs = cur.rs.fontSize * s
+                    const nx = (cur.rs.oppX + s * (cur.rs.cx - cur.rs.oppX)) / cur.rs.W
+                    const ny = (cur.rs.oppY + s * (cur.rs.cy - cur.rs.oppY)) / cur.rs.H
+                    st.resizeTextClip(cur.clipId, fs, nx, ny)
+                  }
+                  return
+                }
+                const { dx: ax, dy: ay } = cur
                 cur.dx = 0
                 cur.dy = 0
-                cur.raf = 0
                 if (ax === 0 && ay === 0) return
-                const st = useEditorStore.getState()
                 if (cur.clipId) st.moveTextClipPosition(cur.clipId, ax, ay)
                 else st.moveSubtitlePosition(ax, ay)
               })
@@ -421,11 +556,24 @@ export default function PreviewPlayer(): JSX.Element {
               cancelAnimationFrame(start.raf)
               start.raf = 0
             }
-            if (start && (start.dx !== 0 || start.dy !== 0)) {
+            if (start) {
               const st = useEditorStore.getState()
-              if (start.clipId) st.moveTextClipPosition(start.clipId, start.dx, start.dy)
-              else st.moveSubtitlePosition(start.dx, start.dy)
+              if (start.rs && start.clipId) {
+                const s = Math.hypot(start.lx - start.rs.oppX, start.ly - start.rs.oppY) / start.rs.d0
+                if (Number.isFinite(s) && s > 0) {
+                  st.resizeTextClip(
+                    start.clipId,
+                    start.rs.fontSize * s,
+                    (start.rs.oppX + s * (start.rs.cx - start.rs.oppX)) / start.rs.W,
+                    (start.rs.oppY + s * (start.rs.cy - start.rs.oppY)) / start.rs.H
+                  )
+                }
+              } else if (start.dx !== 0 || start.dy !== 0) {
+                if (start.clipId) st.moveTextClipPosition(start.clipId, start.dx, start.dy)
+                else st.moveSubtitlePosition(start.dx, start.dy)
+              }
             }
+            if (canvasRef.current) canvasRef.current.style.cursor = ''
             subDragRef.current = null
             setDraggingSubs(false)
             try {
@@ -436,6 +584,7 @@ export default function PreviewPlayer(): JSX.Element {
           }}
           onPointerCancel={() => {
             if (subDragRef.current?.raf) cancelAnimationFrame(subDragRef.current.raf)
+            if (canvasRef.current) canvasRef.current.style.cursor = ''
             subDragRef.current = null
             setDraggingSubs(false)
           }}

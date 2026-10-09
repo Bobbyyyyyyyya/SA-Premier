@@ -37,6 +37,13 @@ export interface EditorState {
   setTrackLocked: (trackId: string, locked: boolean) => void
   setProjectResolution: (width: number, height: number) => void
   setProjectName: (name: string) => void
+  /**
+   * Bestand waar het open project aan hangt (.sapremier). null = nog nooit
+   * bewaard als bestand. Bewust níet gepersisteerd: na een herstart wijst de
+   * autosave-sleuf de weg terug, het bestand kies je opnieuw.
+   */
+  projectPath: string | null
+  setProjectPath: (path: string | null) => void
 
   addClip: (assetId: string, trackId: string, start: number) => void
   /** Audio-effecten van één clip (EQ/compressor/reverb) — ook volume, in één klap. */
@@ -64,6 +71,7 @@ export interface EditorState {
   /** Verschuif de schermpositie (x/y) van ALLE ondertitels — dx/dy in 0..1 van de video. */
   moveSubtitlePosition: (dx: number, dy: number) => void
   moveTextClipPosition: (clipId: string, dx: number, dy: number) => void
+  resizeTextClip: (clipId: string, fontSize: number, x: number, y: number) => void
   /** Zet de schermpositie (x/y) van ALLE ondertitels absoluut. */
   setSubtitlePosition: (x: number, y: number) => void
   /** Pas tekst-eigenschappen toe op ALLE ondertitel-clips (globale caption-controls). */
@@ -97,7 +105,7 @@ export interface ExtractAudioResult {
   error?: string
 }
 
-const initialTracks = (): Track[] => [makeTrack('v1', 'Video 1', 'video'), makeTrack('a1', 'Audio 1', 'audio')]
+export const initialTracks = (): Track[] => [makeTrack('v1', 'Video 1', 'video'), makeTrack('a1', 'Audio 1', 'audio')]
 
 const SUB_TRACK_RE = /^Subtitles(\s*·\s*[A-Za-z-]+)?$/i
 const SUB_MAIN_ID = 'subtitles'
@@ -116,7 +124,7 @@ const isSubTrack = (t: Track): boolean => t.kind === 'video' && SUB_TRACK_RE.tes
  * de track-namen blijven kloppen. Alreeds geordend? Dan komt dezelfde array
  * terug, zodat de selectors niet onnodig her-renderen.
  */
-function orderTracks(tracks: Track[]): Track[] {
+export function orderTracks(tracks: Track[]): Track[] {
   const video = tracks.filter((t) => t.kind === 'video' && !isSubTrack(t))
   const subs = tracks.filter(isSubTrack)
   const audio = tracks.filter((t) => t.kind === 'audio')
@@ -389,7 +397,7 @@ function trimSubtitleOverlaps(clips: Clip[], mainId: string): { clips: Clip[]; c
  * naar de Subtitles-track, waarna ze niet meer te slepen waren. Dat hoort bij
  * migratie, niet bij iets dat élke clips-wijziging opnieuw mag doen.
  */
-function normalizeSubtitleTracks(
+export function normalizeSubtitleTracks(
   tracks: Track[],
   clips: Clip[],
   opts?: { legacy?: boolean }
@@ -491,6 +499,8 @@ export const useEditorStore = create<EditorState>()(
     playing: false,
     zoom: 1,
     mediaIssues: [],
+    projectPath: null,
+    setProjectPath: (path) => set({ projectPath: path }),
 
     addAssets: (assets) => set((s) => {
       // de-dupe op path — voorkomt dubbele saves als zelfde file 2x geïmporteerd wordt
@@ -942,6 +952,34 @@ export const useEditorStore = create<EditorState>()(
       }))
     },
 
+    /**
+     * Eén tekstclip groter/kleiner slepen aan een hoekgreep. Zelfde regels als
+     * verplaatsen (geen ondertitels), plus: de fontSize verandert, dus de
+     * gemeten regelbreedtes moeten mee — anders centreert de export de tekst
+     * op een breedte van vóór het vergroten.
+     */
+    resizeTextClip: (clipId, fontSize, x, y) => {
+      const clip = get().clips.find((c) => c.id === clipId)
+      if (!clip || clip.kind !== 'text' || !clip.text) return
+      if (isRealSubtitle(clip, get().tracks)) return
+      const fs = Math.min(600, Math.max(8, Math.round(fontSize * 2) / 2))
+      set((s) => ({
+        clips: s.clips.map((c) => {
+          if (c.id !== clipId || !c.text) return c
+          const t = { ...c.text, fontSize: fs, x: clamp01(x), y: clamp01(y) }
+          const clean = sanitizeCaptionText(t.text)
+          return {
+            ...c,
+            text: {
+              ...t,
+              lineWs: measureLineWidths(clean, t.fontSize, t.fontFamily, t.fontWeight ?? 500, t.letterSpacing ?? 0),
+              lineWsFor: clean
+            }
+          }
+        })
+      }))
+    },
+
     setSubtitlePosition: (x, y) => {
       const state = get()
       const subIds = subtitleIdsOf(state)
@@ -1334,7 +1372,8 @@ export const useEditorStore = create<EditorState>()(
         selectedClipId: null,
         playhead: 0,
         playing: false,
-        mediaIssues: []
+        mediaIssues: [],
+        projectPath: null
       })
     }
   }))

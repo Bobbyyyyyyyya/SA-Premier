@@ -189,7 +189,7 @@ export default function AiPanel(): JSX.Element {
     try {
       const api = window.api as unknown as Record<string, (() => Promise<{ available: boolean; error?: string }>) | undefined>
       const fn = which === 'ollama' ? api['aiStart'] : which === 'comfy' ? api['comfyStart'] : api['musicStart']
-      if (!fn) { setStartError((p) => ({ ...p, [which]: 'Deze build heeft geen auto-start (update via nieuwe pkg/dmg).' })); return }
+      if (!fn) { setStartError((p) => ({ ...p, [which]: 'Deze build heeft geen auto-start (update via een nieuwe dmg).' })); return }
       const r = await fn()
       if (!r.available) setStartError((p) => ({ ...p, [which]: r.error ?? 'Starten mislukt.' }))
     } catch (e) {

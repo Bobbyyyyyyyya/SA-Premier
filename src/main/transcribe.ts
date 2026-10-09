@@ -498,8 +498,24 @@ export async function installWhisperModel(
 }
 
 let cancelled = false
+
+/**
+ * Het lopende whisper-proces, zodat annuleren ook echt stopt met rekenen.
+ * Zonder dit bleef een geannuleerde (of door een nieuwe run vervangen) taak
+ * op alle cores door Stampen tot het bestand af was — vandaar "systeem lagt".
+ */
+let activeChild: import('node:child_process').ChildProcess | null = null
+
 export function cancelTranscribe(): void {
   cancelled = true
+  if (activeChild) {
+    try {
+      activeChild.kill('SIGKILL')
+    } catch {
+      // al weg
+    }
+    activeChild = null
+  }
 }
 
 function runWhisper(
@@ -509,6 +525,10 @@ function runWhisper(
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
     const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    activeChild = child
+    const clear = (): void => {
+      if (activeChild === child) activeChild = null
+    }
     let stdout = ''
     let stderr = ''
     child.stdout.on('data', (d: Buffer) => {
@@ -533,8 +553,14 @@ function runWhisper(
         })
       }
     })
-    child.on('error', () => resolve({ code: 1, stdout, stderr: stderr || 'spawn failed' }))
-    child.on('close', (code) => resolve({ code: code ?? 1, stdout, stderr }))
+    child.on('error', () => {
+      clear()
+      resolve({ code: 1, stdout, stderr: stderr || 'spawn failed' })
+    })
+    child.on('close', (code) => {
+      clear()
+      resolve({ code: code ?? 1, stdout, stderr })
+    })
   })
 }
 
@@ -772,6 +798,16 @@ export async function generateSubtitles(
   onProgress?: (p: TranscribeProgress) => void
 ): Promise<TranscribeResult> {
   cancelled = false
+  // Een nieuwe run vervangt een eventueel nog lopende: zonder dit stapelden
+  // oude whisper-processen zich op, elk op volle cores.
+  if (activeChild) {
+    try {
+      activeChild.kill('SIGKILL')
+    } catch {
+      // al weg
+    }
+    activeChild = null
+  }
   const warnings: string[] = []
   const send = (p: TranscribeProgress): void => {
     if (!cancelled || p.phase === 'cancelled' || p.phase === 'error') onProgress?.(p)

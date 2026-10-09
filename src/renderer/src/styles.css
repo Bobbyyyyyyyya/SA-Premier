@@ -290,8 +290,6 @@ body.ai-busy .ai-tab::before {
   0%, 100% { opacity: 0.55; }
   50% { opacity: 1; }
 }
-  100% { background-position: 300% 50%; }
-}
 
 .panel-body {
   flex: 1;
@@ -1436,6 +1434,7 @@ button.small { font-size: 11px; padding: 4px 8px; }
 .project-empty-title { font-weight: 700; }
 .project-empty-sub { font-size: 11px; color: #6b6b7a; margin-top: 2px; }
 .home-empty { padding: 24px; text-align: center; color: #6b6b7a; background: #fff; border: 1.5px dashed #e8e2d9; border-radius: 12px; }
+.home-error { padding: 10px 14px; margin-bottom: 10px; color: #8a2a1a; background: #fdeee8; border: 1px solid #f0c4b2; border-radius: 8px; font-size: 12px; }
 .recent-grid--light { gap: 14px; }
 .recent-card--light { background: #fff; border-color: #e8e2d9; box-shadow: 0 4px 12px rgba(0,0,0,0.04); }
 .recent-card--light:hover { border-color: #ff7f2a; }

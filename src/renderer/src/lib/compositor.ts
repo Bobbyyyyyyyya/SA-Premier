@@ -1,5 +1,7 @@
 import type { Clip, ClipEffects } from '../../../shared/types'
+import { DEFAULT_EFFECTS } from '../../../shared/types'
 import { evalAnimDir, isPreviewOnlyAnim, isText3DAnim } from '../../../shared/textanim'
+import { VFX, flashAlpha, flickerDelta, shakeAmpPx, shakeFrac, zoomFactor } from '../../../shared/videofx'
 import type { EditorState } from '../store'
 import type { PlayerManager } from './player'
 
@@ -16,24 +18,28 @@ export function filterString(e: ClipEffects): string {
   // Zonder effecten geen filter: een canvas-filter (zelfs brightness(1)) dwingt
   // de browser tot een filter-pipeline op élke frame. Dit is de grootste
   // per-frame kosten in de preview.
+  //
+  // Oude projecten missen de nieuwe velden (undefined): `?? 0` zodat die als
+  // "uit" tellen in plaats van de pipeline per ongeluk aan te zetten.
+  const v = (k: keyof ClipEffects): number => e[k] ?? 0
   if (
-    e.brightness === 0 && e.contrast === 0 && e.saturation === 0 &&
-    e.grayscale === 0 && e.sepia === 0 && e.hue === 0 &&
-    e.invert === 0 && e.blur === 0
+    v('brightness') === 0 && v('contrast') === 0 && v('saturation') === 0 &&
+    v('grayscale') === 0 && v('sepia') === 0 && v('hue') === 0 &&
+    v('invert') === 0 && v('blur') === 0
   ) {
     return ''
   }
-  const p = (v: number, scale = 1): string => Math.max(0, 1 + v * scale).toFixed(3)
+  const p = (x: number, scale = 1): string => Math.max(0, 1 + x * scale).toFixed(3)
   const parts: string[] = [
-    `brightness(${p(e.brightness)})`,
-    `contrast(${p(e.contrast)})`,
-    `saturate(${p(e.saturation)})`
+    `brightness(${p(v('brightness'))})`,
+    `contrast(${p(v('contrast'))})`,
+    `saturate(${p(v('saturation'))})`
   ]
-  if (e.grayscale > 0) parts.push(`grayscale(${Math.min(1, e.grayscale).toFixed(3)})`)
-  if (e.sepia > 0) parts.push(`sepia(${Math.min(1, e.sepia).toFixed(3)})`)
-  if (e.hue !== 0) parts.push(`hue-rotate(${e.hue}deg)`)
-  if (e.invert > 0) parts.push(`invert(${Math.min(1, e.invert).toFixed(3)})`)
-  if (e.blur > 0) parts.push(`blur(${e.blur.toFixed(2)}px)`)
+  if (v('grayscale') > 0) parts.push(`grayscale(${Math.min(1, v('grayscale')).toFixed(3)})`)
+  if (v('sepia') > 0) parts.push(`sepia(${Math.min(1, v('sepia')).toFixed(3)})`)
+  if (v('hue') !== 0) parts.push(`hue-rotate(${v('hue')}deg)`)
+  if (v('invert') > 0) parts.push(`invert(${Math.min(1, v('invert')).toFixed(3)})`)
+  if (v('blur') > 0) parts.push(`blur(${v('blur').toFixed(2)}px)`)
   return parts.join(' ')
 }
 
@@ -124,6 +130,42 @@ export function clipAudioGain(clip: Clip, time: number): number {
   return clipAlpha(clip, time)
 }
 
+/** Korreltegels: klein, van tevoren gemaakt, per frame een andere. */
+const grainTiles: Array<CanvasRenderingContext2D | null> = []
+function grainTile(i: number): CanvasRenderingContext2D | null {
+  if (grainTiles[i] === undefined) {
+    try {
+      const c = document.createElement('canvas')
+      c.width = 160
+      c.height = 90
+      const g = c.getContext('2d')
+      if (!g) {
+        grainTiles[i] = null
+        return null
+      }
+      const img = g.createImageData(160, 90)
+      // vaste zaden per tegel zodat scrubben stabiel blijft
+      let seed = 1234567 + i * 98765
+      const rnd = (): number => {
+        seed = (seed * 1103515245 + 12345) & 0x7fffffff
+        return seed / 0x7fffffff
+      }
+      for (let p = 0; p < img.data.length; p += 4) {
+        const v = 128 + Math.round((rnd() - 0.5) * 160)
+        img.data[p] = v
+        img.data[p + 1] = v
+        img.data[p + 2] = v
+        img.data[p + 3] = 255
+      }
+      g.putImageData(img, 0, 0)
+      grainTiles[i] = g
+    } catch {
+      grainTiles[i] = null
+    }
+  }
+  return grainTiles[i] ?? null
+}
+
 function drawVideo(
   ctx: CanvasRenderingContext2D,
   el: HTMLVideoElement | HTMLImageElement,
@@ -133,7 +175,9 @@ function drawVideo(
   alpha: number,
   dx = 0,
   dy = 0,
-  scale = 1
+  scale = 1,
+  /** seconden in de clip — stuurt flits/schudden/zoomen/korrel */
+  local = 0
 ): void {
   const vw = 'videoWidth' in el ? el.videoWidth : el.naturalWidth
   const vh = 'videoHeight' in el ? el.videoHeight : el.naturalHeight
@@ -143,23 +187,65 @@ function drawVideo(
   const dh = vh * s
   const baseDx = (W - dw) / 2
   const baseDy = (H - dh) / 2
-  const drawScale = scale
+  const fx = effects ?? DEFAULT_EFFECTS
+  const mirror = fx.mirror ?? 0
+  const sx = mirror === 1 ? -1 : 1
+  const sy = mirror === 2 ? -1 : 1
+  // schudden vergroot eerst vast (zelfde 1.12 als de export) zodat er nooit
+  // zwarte randen in beeld komen; de uitslag blijft er ruim binnen
+  let drawScale = scale
+  let sdx = dx
+  let sdy = dy
+  const sh = fx.shake ?? 0
+  if (sh > 0) {
+    drawScale *= VFX.shakeOver
+    const amp = shakeAmpPx(sh, Math.min(W, H))
+    const { fx: fxp, fy: fyp } = shakeFrac(fx.shakeSpeed ?? 0.5, local)
+    sdx += fxp * amp
+    sdy += fyp * amp
+  }
+  const zm = fx.zoom ?? 0
+  if (zm > 0) drawScale *= zoomFactor(zm, fx.zoomSpeed ?? 0.5, local)
   ctx.save()
   ctx.globalAlpha = Math.max(0, Math.min(1, alpha))
-  ctx.filter = filterString(effects)
-  if (drawScale !== 1 || dx !== 0 || dy !== 0) {
+  ctx.filter = filterString(fx)
+  if (drawScale !== 1 || sdx !== 0 || sdy !== 0 || sx !== 1 || sy !== 1) {
     const cx = W / 2
     const cy = H / 2
-    ctx.translate(cx + dx, cy + dy)
-    ctx.scale(drawScale, drawScale)
+    ctx.translate(cx + sdx, cy + sdy)
+    ctx.scale(drawScale * sx, drawScale * sy)
     ctx.translate(-cx, -cy)
     ctx.drawImage(el, baseDx, baseDy, dw, dh)
   } else {
     ctx.drawImage(el, baseDx, baseDy, dw, dh)
   }
   ctx.filter = 'none'
-  if (effects.vignette > 0) {
-    const v = Math.min(1, effects.vignette)
+  // witte flits en flikker als overlay ná het beeld, vóór wat er bovenop ligt
+  const fl = flashAlpha(fx.flash ?? 0, fx.flashRate ?? 2, local)
+  if (fl > 0.003) {
+    ctx.globalAlpha = Math.max(0, Math.min(1, alpha)) * Math.min(1, fl)
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, W, H)
+  }
+  const fd = flickerDelta(fx.flicker ?? 0, local)
+  if (Math.abs(fd) > 0.003) {
+    ctx.globalAlpha = Math.max(0, Math.min(1, alpha)) * Math.min(1, Math.abs(fd))
+    ctx.fillStyle = fd > 0 ? '#ffffff' : '#000000'
+    ctx.fillRect(0, 0, W, H)
+  }
+  const gr = fx.grain ?? 0
+  if (gr > 0.003) {
+    const tile = grainTile(Math.abs(Math.floor(local * 24)) % 8)
+    if (tile) {
+      ctx.save()
+      ctx.globalCompositeOperation = 'overlay'
+      ctx.globalAlpha = Math.max(0, Math.min(1, alpha)) * Math.min(1, gr)
+      ctx.drawImage(tile.canvas, 0, 0, W, H)
+      ctx.restore()
+    }
+  }
+  if ((fx.vignette ?? 0) > 0) {
+    const v = Math.min(1, fx.vignette ?? 0)
     const grad = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75)
     grad.addColorStop(0, 'rgba(0,0,0,0)')
     grad.addColorStop(1, `rgba(0,0,0,${(0.55 * v).toFixed(3)})`)
@@ -366,6 +452,48 @@ export function hitTestTextClip(
       const b = textClipBounds(clip, W, H, time)
       if (b && px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h) return clip
     }
+  }
+  return null
+}
+
+export interface TextFrame {
+  x: number
+  y: number
+  w: number
+  h: number
+  /** zijde van de getekende hoekblokjes, in canvas-pixels */
+  hs: number
+}
+
+/**
+ * Het kader zoals `drawText` het tekent (tekstbox + pad), zodat hit-test en
+ * tekenen nooit uit elkaar lopen. Geeft null als de clip hier niet zichtbaar is.
+ */
+export function textSelectionFrame(clip: Clip, W: number, H: number, time: number): TextFrame | null {
+  const b = textClipBounds(clip, W, H, time)
+  if (!b) return null
+  const pad = Math.max(6, Math.round(10 * (H / 1080)))
+  const hs = Math.max(5, Math.round(9 * (H / 1080)))
+  return { x: b.x - pad, y: b.y - pad, w: b.w + pad * 2, h: b.h + pad * 2, hs }
+}
+
+export type TextCorner = 0 | 1 | 2 | 3
+
+/**
+ * Welke hoekgreep (0=links­boven, 1=rechts­boven, 2=links­onder, 3=rechts­onder)
+ * zit er onder dit punt? `grabR` is de grijpradius in canvas-pixels; de beller
+ * rekent die om uit display-pixels zodat het op elk formaat even goed pakt.
+ */
+export function hitTestTextHandle(frame: TextFrame, px: number, py: number, grabR: number): TextCorner | null {
+  const corners: Array<[number, number]> = [
+    [frame.x, frame.y],
+    [frame.x + frame.w, frame.y],
+    [frame.x, frame.y + frame.h],
+    [frame.x + frame.w, frame.y + frame.h]
+  ]
+  for (let i = 0; i < 4; i++) {
+    const [cx, cy] = corners[i]
+    if (Math.abs(px - cx) <= grabR && Math.abs(py - cy) <= grabR) return i as TextCorner
   }
   return null
 }
@@ -711,7 +839,7 @@ export function renderFrame(ctx: CanvasRenderingContext2D, o: RenderOpts): void 
       }
       // keep last frame if video not yet have current data — don't clear to black
       try {
-        drawVideo(ctx, el as HTMLVideoElement, width, height, clip.effects, alpha, tx, ty, ts)
+        drawVideo(ctx, el as HTMLVideoElement, width, height, clip.effects, alpha, tx, ty, ts, time - clip.start)
       } catch {
         // draw failed, keep previous frame
       }

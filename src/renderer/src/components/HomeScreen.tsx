@@ -1,63 +1,69 @@
 import { useCallback, useEffect, useState } from 'react'
 import { IconRobot, IconPalette, IconMusic, IconBox } from './icons'
-import type { RecentMediaItem } from '../../../shared/types'
-import { importPaths, importFiles } from '../lib/inspect'
+import type { RecentProjectItem } from '../../../shared/types'
+import { importFiles } from '../lib/inspect'
 import { mediaUrl } from '../lib/mediaUrl'
+import { openProjectFile, saveProjectFile } from '../lib/projectFile'
 import { useEditorStore, selectTotal } from '../store'
 import { formatTime } from '../lib/format'
 import logo from '../assets/logo.svg'
 
+function formatDate(ts: number): string {
+  try {
+    const d = new Date(ts)
+    const today = new Date()
+    const sameDay = d.toDateString() === today.toDateString()
+    const yest = new Date(today)
+    yest.setDate(yest.getDate() - 1)
+    if (sameDay) return `vandaag ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+    if (d.toDateString() === yest.toDateString()) return 'gisteren'
+    return d.toLocaleDateString([], { day: 'numeric', month: 'short' })
+  } catch {
+    return ''
+  }
+}
+
 export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Element {
-  const [recent, setRecent] = useState<RecentMediaItem[]>([])
+  const [recent, setRecent] = useState<RecentProjectItem[]>([])
   const [opening, setOpening] = useState<string | null>(null)
+  const [openError, setOpenError] = useState<string | null>(null)
   const project = useEditorStore((s) => s.project)
   const assets = useEditorStore((s) => s.assets)
   const clips = useEditorStore((s) => s.clips)
   const total = useEditorStore(selectTotal)
 
   const refresh = useCallback(async () => {
-    setRecent(await window.api.recentsList())
+    try {
+      setRecent(await window.api.recentProjectsList())
+    } catch {
+      setRecent([])
+    }
   }, [])
 
   useEffect(() => {
     void refresh()
   }, [refresh])
 
-  const openRecent = async (paths: string[]): Promise<void> => {
-    setOpening(paths[0])
-    await importPaths(paths, { place: true })
+  const openCard = async (item: RecentProjectItem): Promise<void> => {
+    setOpening(item.path)
+    setOpenError(null)
+    const r = await openProjectFile(item.path)
     setOpening(null)
-    onOpen()
-  }
-
-  const openSingle = async (path: string): Promise<void> => {
-    setOpening(path)
-    await importPaths([path], { place: false })
-    setOpening(null)
+    if (!r.ok) {
+      if (r.missing) {
+        // Bestand weg (verplaatst/verwijderd): uit de lijst, en zeg het erbij
+        // in plaats van stil niets te doen.
+        setOpenError(`“${item.name}” staat niet meer op ${item.path} — uit de lijst gehaald.`)
+      } else if (!r.cancelled) {
+        setOpenError(`“${item.name}” openen mislukt: ${r.error ?? 'onbekende fout'}`)
+      }
+      void refresh()
+      return
+    }
     onOpen()
   }
 
   const hasProject = clips.length > 0 || assets.length > 0
-
-  // Fix: groepeer recente imports die tegelijk gedaan zijn (binnen 3s) als één project
-  const grouped = (() => {
-    if (!recent.length) return [] as RecentMediaItem[][]
-    const sorted = [...recent].sort((a, b) => b.addedAt - a.addedAt)
-    const groups: RecentMediaItem[][] = []
-    let cur: RecentMediaItem[] = [sorted[0]]
-    for (let i = 1; i < sorted.length; i++) {
-      const prev = sorted[i - 1]
-      const curItem = sorted[i]
-      if (Math.abs(prev.addedAt - curItem.addedAt) < 3500) {
-        cur.push(curItem)
-      } else {
-        groups.push(cur)
-        cur = [curItem]
-      }
-    }
-    groups.push(cur)
-    return groups
-  })()
 
   return (
     <div className="home home--light">
@@ -167,6 +173,18 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
               <div className="project-actions">
                 <button className="primary" onClick={onOpen} title="Open timeline →" data-tooltip="Open timeline →">Open timeline →</button>
                 <button
+                  onClick={async (e) => {
+                    e.stopPropagation()
+                    const r = await saveProjectFile()
+                    if (!r.ok && !r.cancelled && r.error) window.alert(`Bewaren mislukt: ${r.error}`)
+                    void refresh()
+                  }}
+                  title="Bewaar als projectbestand"
+                  data-tooltip="Bewaar als projectbestand"
+                >
+                  Bewaar
+                </button>
+                <button
                   className="ghost"
                   onClick={async (e) => {
                     e.stopPropagation()
@@ -193,57 +211,44 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
           )}
         </section>
 
-        {/* Recent — nu gegroepeerd, niet per los project */}
+        {/* Recent — uitsluitend bewaarde projecten, geen losse media meer */}
         <section className="home-section">
           <div className="home-section-head">
             <h2>Recent</h2>
             <div className="home-section-actions">
-              <button className="ghost small" onClick={() => void openRecent(recent.map((r) => r.path))} disabled={!recent.length} title="Open alle recente bestanden samen in één project" data-tooltip="Open alle recente bestanden samen in één project">
-                Alles in één project
-              </button>
               {recent.length > 0 && (
-                <button className="ghost small" onClick={async () => { await window.api.recentsClear(); void refresh() }} title="Wissen" data-tooltip="Wissen">
+                <button className="ghost small" onClick={async () => { await window.api.recentProjectsClear(); void refresh() }} title="Wissen" data-tooltip="Wissen">
                   Wissen
                 </button>
               )}
             </div>
           </div>
-          {grouped.length === 0 ? (
-            <div className="home-empty">Nog geen recente media. Importeer video, foto of audio om te beginnen.</div>
+          {openError && <div className="home-error" role="alert">{openError}</div>}
+          {recent.length === 0 ? (
+            <div className="home-empty">Nog geen bewaarde projecten. Open de timeline, monteer iets en kies <b>Bewaar</b> — dan staat het hier.</div>
           ) : (
             <div className="recent-grid recent-grid--light">
-              {grouped.map((g) => {
-                const key = g.map((x) => x.path).join('|')
-                const isGroup = g.length > 1
-                const first = g[0]
-                const title = isGroup ? `${g.length} bestanden — ${g.map((x) => x.name).join(', ')}` : first.path
-                const thumb = first.thumbnail ?? g.find((x) => x.thumbnail)?.thumbnail
-                const openingAny = g.some((x) => opening === x.path)
-                return (
-                  <div key={key} className={`recent-card recent-card--light ${isGroup ? 'group' : ''}`} title={title}>
-                    <div className="recent-thumb recent-thumb--light" style={{ backgroundImage: thumb ? `url(${thumb})` : g.length === 1 ? `url(${mediaUrl(first.path)})` : undefined, backgroundColor: isGroup ? '#f0edea' : undefined }} onClick={() => void openRecent(g.map((x) => x.path))}>
-                      {!thumb && !isGroup && <span className="recent-thumb-fallback">{first.type === 'audio' ? <IconMusic size={18} /> : <IconBox size={18} />}</span>}
-                      {isGroup && (
-                        <div className="recent-group-stack">
-                          {g.slice(0, 3).map((x, i) => (
-                            <span key={x.path} className="recent-group-thumb" style={{ backgroundImage: x.thumbnail ? `url(${x.thumbnail})` : `url(${mediaUrl(x.path)})`, zIndex: 3 - i, left: `${i * 10}px`, top: `${i * 6}px` }} />
-                          ))}
-                          {g.length > 3 && <span className="recent-group-more">+{g.length - 3}</span>}
-                        </div>
-                      )}
-                      {openingAny && <div className="recent-opening">Opening…</div>}
-                      <span className="recent-count">{isGroup ? `${g.length} bestanden` : first.type === 'audio' ? 'Audio' : 'Video'}</span>
-                    </div>
-                    <div className="recent-name recent-name--light" title={isGroup ? g.map((x) => x.name).join(' + ') : first.name}>
-                      {isGroup ? `${g.length} × project` : first.name}
-                    </div>
-                    {isGroup && <div className="recent-sub">{g.map((x) => x.name).join(' · ').slice(0, 42)}</div>}
+              {recent.map((p) => (
+                <div key={p.path} className="recent-card recent-card--light" title={`${p.name}\n${p.path}`}>
+                  <div
+                    className="recent-thumb recent-thumb--light"
+                    style={p.thumbnail ? { backgroundImage: `url(${p.thumbnail})` } : undefined}
+                    onClick={() => void openCard(p)}
+                  >
+                    {!p.thumbnail && <span className="recent-thumb-fallback"><IconBox size={18} /></span>}
+                    {opening === p.path && <div className="recent-opening">Opening…</div>}
+                    <span className="recent-count">{p.clipCount} clips</span>
                   </div>
-                )
-              })}
+                  <div className="recent-name recent-name--light" title={p.name}>
+                    {p.name}
+                  </div>
+                  <div className="recent-sub">
+                    {[formatTime(p.duration, project.fps), formatDate(p.updatedAt)].filter(Boolean).join(' · ')}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
-          <div className="home-foot-hint">Tip: <b>“Alles in één project”</b> fixt je bug — meerdere video’s worden niet meer als losse projecten gezien.</div>
         </section>
       </div>
     </div>

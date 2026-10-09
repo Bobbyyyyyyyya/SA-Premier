@@ -36,20 +36,15 @@ extraResources:
       - ffmpeg.exe
 mac:
   category: public.app-category.video
+  # DMG = de installer, ZIP = wat de auto-updater ophaalt (zie electron-builder.yml)
   target:
     - dmg
     - zip
-    - pkg
   identity: '-'
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
-pkg:
-  scripts: build/pkg-scripts
-  installLocation: /Applications
-  allowAnywhere: false
-  allowCurrentUserHome: false
 win:
   target:
     - nsis

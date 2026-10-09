@@ -6,6 +6,7 @@ import type { WebContents } from 'electron'
 import type { Clip, ClipEffects, ExportProgress, ExportRequest, ExportStartResult } from '../shared/types'
 import { hasSeparateAudioClip, sanitizeCaptionText } from '../shared/types'
 import { planAnimExport } from '../shared/textanim'
+import { flashEnableExpr, flickerFilters, grainFilter, mirrorFilter, shakeFilters, zoomFilters } from '../shared/videofx'
 
 const FALLBACK_FONT = '/System/Library/Fonts/Supplemental/Arial.ttf'
 function resolveFontFile(preferred?: string): string {
@@ -106,7 +107,7 @@ let current: { cmd: ffmpeg.FfmpegCommand | null; cancelled: boolean } | null = n
 const n = (v: number): string => Number.isFinite(v) ? v.toFixed(4) : '0'
 const IMAGE_INPUT = /\.(png|jpe?g|gif|webp|bmp)$/i
 
-function effectFilters(e: ClipEffects): string[] {
+function effectFilters(e: ClipEffects, width: number, height: number): string[] {
   const out: string[] = []
   const eq: string[] = []
   if (e.brightness) eq.push(`brightness=${n(e.brightness)}`)
@@ -126,6 +127,19 @@ function effectFilters(e: ClipEffects): string[] {
   if (e.blur > 0) out.push(`boxblur=luma_radius=${n(e.blur)}:luma_power=1:chroma_radius=${n(e.blur / 2)}:chroma_power=1`)
   if (e.invert > 0.5) out.push('negate')
   if (e.vignette > 0) out.push(`vignette=angle=${(Math.PI * 0.25 * Math.min(1, e.vignette)).toFixed(4)}`)
+  // Dynamische effecten (gedeelde tabellen in shared/videofx.ts — zelfde
+  // getallen als de preview). Oude projecten missen deze velden: `?? 0`.
+  const flash = e.flash ?? 0
+  if (flash > 0) {
+    out.push(`eq=brightness=${n(Math.min(1, flash))}:enable='${flashEnableExpr(e.flashRate ?? 2)}'`)
+  }
+  out.push(...flickerFilters(e.flicker ?? 0))
+  out.push(...shakeFilters(e.shake ?? 0, e.shakeSpeed ?? 0.5, width, height))
+  out.push(...zoomFilters(e.zoom ?? 0, e.zoomSpeed ?? 0.5, width, height))
+  const grain = grainFilter(e.grain ?? 0)
+  if (grain) out.push(grain)
+  const mirror = mirrorFilter(e.mirror ?? 0)
+  if (mirror) out.push(mirror)
   return out
 }
 
@@ -213,7 +227,7 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
       fx.push(`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`)
       fx.push('setsar=1')
       fx.push(`fps=${fps}`)
-      fx.push(...effectFilters(c.effects))
+      fx.push(...effectFilters(c.effects, width, height))
       fx.push('format=rgba')
       if (c.transitionIn) {
         fx.push(`fade=t=in:st=0:d=${n(c.transitionIn.duration)}:alpha=1`)

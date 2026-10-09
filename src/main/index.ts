@@ -11,8 +11,7 @@ import * as transcribe from './transcribe'
 import * as project from './project'
 import * as probe from './probe'
 import * as aiSetup from './ai-setup'
-import { addRecent, clearRecents, loadRecents } from './recents'
-import type { ExportRequest, RecentMediaItem, SavedProject, UpdaterStatus } from '../shared/types'
+import type { ExportRequest, SavedProject, UpdaterStatus } from '../shared/types'
 import type { AiSetup } from './ai-setup'
 
 protocol.registerSchemesAsPrivileged([
@@ -288,9 +287,14 @@ function registerIpc(): void {
     return { ok: true, path: fp }
   })
 
-  ipcMain.handle('recents-list', () => loadRecents())
-  ipcMain.handle('recents-add', (_e, item: RecentMediaItem) => addRecent(item))
-  ipcMain.handle('recents-clear', () => clearRecents())
+  ipcMain.handle('project-save-as', (event, data: SavedProject, meta?: { thumbnail?: string }) =>
+    project.saveProjectFileAs(BrowserWindow.fromWebContents(event.sender), data, meta))
+  ipcMain.handle('project-open', (event) =>
+    project.openProjectFileDialog(BrowserWindow.fromWebContents(event.sender)))
+  ipcMain.handle('project-open-path', (_e, filePath: string) => project.openProjectFileAt(filePath))
+  ipcMain.handle('project-get-path', () => project.getCurrentProjectPath())
+  ipcMain.handle('recent-projects-list', () => project.listRecentProjects())
+  ipcMain.handle('recent-projects-clear', () => project.clearRecentProjects())
 
   ipcMain.handle('comfy-status', () => comfy.comfyStatus())
   ipcMain.handle('comfy-models', () => comfy.listCheckpoints())
@@ -404,6 +408,8 @@ function registerIpc(): void {
   ipcMain.handle('project-load', () => project.loadProject())
   ipcMain.handle('project-save', (_e, data: SavedProject) => project.saveProject(data))
   ipcMain.handle('project-clear', () => project.clearProject())
+  ipcMain.handle('project-save-file', (event, data: SavedProject, meta?: { thumbnail?: string }) =>
+    project.saveProjectFile(BrowserWindow.fromWebContents(event.sender), data, meta))
 
   ipcMain.handle('ai-setup-get', () => aiSetup.getAiSetup())
   ipcMain.handle('ai-setup-set', (_e, patch: Partial<AiSetup>) => aiSetup.setAiSetup(patch))
@@ -575,9 +581,16 @@ app.whenReady().then(() => {
   registerIpc()
   // Lite: alleen 1x proberen op de achtergrond (geen retry-spam)
   // Ai-setup staat standaard op custom: alleen Music aan (Comfy/Ollama uit) — respecteert Lite.
-  void ai.ensureOllama().catch(() => null)
-  void comfy.ensureComfyUIAsync(10000).catch(() => null)
-  void musicAi.ensureMusicAIAsync(10000).catch(() => null)
+  //
+  // Serieel, niet parallel: elke ensure doet een `python -c "import torch…"`
+  // (seconden op een volle core) en boot daarna nog een server die hetzelfde
+  // nog een keer doet. Parallel betekende 2–3 cores vol bij iedere start;
+  // achter elkaar blijft het bij één en blijft de machine bruikbaar.
+  void (async () => {
+    await ai.ensureOllama().catch(() => null)
+    await comfy.ensureComfyUIAsync(10000).catch(() => null)
+    await musicAi.ensureMusicAIAsync(10000).catch(() => null)
+  })()
   const win = createWindow()
   setupAutoUpdater(win)
 

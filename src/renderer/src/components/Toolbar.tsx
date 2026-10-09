@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useEditorStore } from '../store'
 import { importFiles } from '../lib/inspect'
+import { openProjectFile, saveProjectFile } from '../lib/projectFile'
 import logo from '../assets/logo.svg'
 import type { AppInfo, UpdaterStatus } from '../../../shared/types'
 
@@ -44,6 +45,20 @@ export default function Toolbar({ onExport, onHome }: { onExport: () => void; on
         <span className="brand-text">SA<span>Premier</span></span>
       </div>
       <button onClick={() => importFiles()} title="Import" data-tooltip="Import">Import</button>
+      <button
+        onClick={() => {
+          void saveProjectFile().then((r) => {
+            if (!r.ok && !r.cancelled && r.error) window.alert(`Bewaren mislukt: ${r.error}`)
+          })
+        }}
+        title="Project bewaren (⌘S · ⇧⌘S = bewaar als)"
+        data-tooltip="Project bewaren (⌘S · ⇧⌘S = bewaar als)"
+      >
+        Bewaar
+      </button>
+      <button onClick={() => void openProjectFile()} title="Project openen (⌘O)" data-tooltip="Project openen (⌘O)">
+        Open…
+      </button>
       <div className="spacer" />
       <select
         className="proj-info"

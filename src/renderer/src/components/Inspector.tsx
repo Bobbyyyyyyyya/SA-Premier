@@ -925,6 +925,29 @@ export default function Inspector(): JSX.Element {
             <Slider label="Vervagen" value={fx.blur} min={0} max={10} step={0.1} scale={10} unit="px" onChange={(v) => setFx({ blur: v })} />
             <Slider label="Vignet" value={fx.vignette} min={0} max={1} step={0.01} unit="%" onChange={(v) => setFx({ vignette: v })} />
           </div>
+          <div className="fx-group">
+            <div className="fx-group-title">Actie</div>
+            <Slider label="Flits" value={fx.flash ?? 0} min={0} max={1} step={0.01} unit="%" onChange={(v) => setFx({ flash: v })} />
+            <Slider label="Flitstempo" value={fx.flashRate ?? 2} min={0.5} max={8} step={0.1} unit="Hz" scale={1} onChange={(v) => setFx({ flashRate: v })} />
+            <Slider label="Schudden" value={fx.shake ?? 0} min={0} max={1} step={0.01} unit="%" onChange={(v) => setFx({ shake: v })} />
+            <Slider label="Schudtempo" value={fx.shakeSpeed ?? 0.5} min={0} max={1} step={0.01} unit="%" onChange={(v) => setFx({ shakeSpeed: v })} />
+            <Slider label="Zoomen" value={fx.zoom ?? 0} min={0} max={1} step={0.01} unit="%" onChange={(v) => setFx({ zoom: v })} />
+            <Slider label="Zoomtempo" value={fx.zoomSpeed ?? 0.5} min={0} max={1} step={0.01} unit="%" onChange={(v) => setFx({ zoomSpeed: v })} />
+            <Slider label="Korrel" value={fx.grain ?? 0} min={0} max={1} step={0.01} unit="%" onChange={(v) => setFx({ grain: v })} />
+            <Slider label="Flikker" value={fx.flicker ?? 0} min={0} max={1} step={0.01} unit="%" onChange={(v) => setFx({ flicker: v })} />
+            <div className="ctl">
+              <label style={{ width: 76 }}>Spiegel</label>
+              <select
+                value={fx.mirror ?? 0}
+                onChange={(e) => setFx({ mirror: Number(e.target.value) })}
+                style={{ flex: 1 }}
+              >
+                <option value={0}>Uit</option>
+                <option value={1}>Horizontaal</option>
+                <option value={2}>Verticaal</option>
+              </select>
+            </div>
+          </div>
           <div className="btn-row">
             <button onClick={resetFx} title="Alles terug naar 0" data-tooltip="Alles terug naar 0">Alles terug</button>
           </div>

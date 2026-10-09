@@ -1210,6 +1210,29 @@ export interface ClipEffects {
   blur: number
   invert: number
   vignette: number
+  /**
+   * Dynamische effecten (flits, schudden, …). Ontbreken ze — zoals in oude
+   * projecten — dan gelden ze als 0; overal staat `?? 0` of `> 0` dus er
+   * hoeft niets gemigreerd te worden.
+   */
+  /** witte flitsen, sterkte 0..1 */
+  flash: number
+  /** flitsen per seconde */
+  flashRate: number
+  /** camerashake, amplitude 0..1 */
+  shake: number
+  /** schudtempo 0..1 (→ 2..12 Hz) */
+  shakeSpeed: number
+  /** pompende zoom, sterkte 0..1 */
+  zoom: number
+  /** zoomtempo 0..1 (→ 0.8..3 Hz) */
+  zoomSpeed: number
+  /** filmkorrel 0..1 */
+  grain: number
+  /** helderheidsflikker 0..1 */
+  flicker: number
+  /** 0 = uit, 1 = horizontaal, 2 = verticaal */
+  mirror: number
 }
 
 export interface Transition {
@@ -1351,7 +1374,16 @@ export const DEFAULT_EFFECTS: ClipEffects = {
   hue: 0,
   blur: 0,
   invert: 0,
-  vignette: 0
+  vignette: 0,
+  flash: 0,
+  flashRate: 2,
+  shake: 0,
+  shakeSpeed: 0.5,
+  zoom: 0,
+  zoomSpeed: 0.5,
+  grain: 0,
+  flicker: 0,
+  mirror: 0
 }
 
 export const uid = (): string => 'x' + Math.random().toString(36).slice(2, 10)
@@ -1395,13 +1427,20 @@ export interface AiGenerateResult {
   text?: string
 }
 
-export interface RecentMediaItem {
+/**
+ * Een bewaard projectbestand (.sapremier) voor de Recent-lijst op Home.
+ * Alleen projecten — geen losse mediabestanden meer. De thumbnail is een
+ * kleine jpeg-dataURL van de preview op het moment van bewaren; ontbreekt
+ * hij, dan toont de kaart een fallback-icoon.
+ */
+export interface RecentProjectItem {
   path: string
   name: string
-  type: AssetType
   thumbnail?: string
+  clipCount: number
+  assetCount: number
   duration: number
-  addedAt: number
+  updatedAt: number
 }
 
 /**

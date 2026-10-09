@@ -14,7 +14,7 @@ import type {
   InstallProgress,
   InstalledModel,
   MusicStatus,
-  RecentMediaItem,
+  RecentProjectItem,
   SavedProject,
   TranscribeProgress,
   TranscribeRequest,
@@ -52,9 +52,17 @@ const api = {
   aiStoreAudio: (base64: string, name: string): Promise<{ ok: boolean; path?: string }> =>
     ipcRenderer.invoke('ai-store-audio', base64, name),
 
-  recentsList: (): Promise<RecentMediaItem[]> => ipcRenderer.invoke('recents-list'),
-  recentsAdd: (item: RecentMediaItem): Promise<RecentMediaItem[]> => ipcRenderer.invoke('recents-add', item),
-  recentsClear: (): Promise<RecentMediaItem[]> => ipcRenderer.invoke('recents-clear'),
+  projectSaveFile: (data: SavedProject, meta?: { thumbnail?: string }): Promise<{ ok: boolean; path?: string; cancelled?: boolean; error?: string }> =>
+    ipcRenderer.invoke('project-save-file', data, meta),
+  projectSaveAs: (data: SavedProject, meta?: { thumbnail?: string }): Promise<{ ok: boolean; path?: string; cancelled?: boolean; error?: string }> =>
+    ipcRenderer.invoke('project-save-as', data, meta),
+  projectOpen: (): Promise<{ ok: boolean; path?: string; data?: SavedProject; cancelled?: boolean; error?: string; missing?: boolean }> =>
+    ipcRenderer.invoke('project-open'),
+  projectOpenPath: (filePath: string): Promise<{ ok: boolean; path?: string; data?: SavedProject; cancelled?: boolean; error?: string; missing?: boolean }> =>
+    ipcRenderer.invoke('project-open-path', filePath),
+  projectGetPath: (): Promise<string | null> => ipcRenderer.invoke('project-get-path'),
+  recentProjectsList: (): Promise<RecentProjectItem[]> => ipcRenderer.invoke('recent-projects-list'),
+  recentProjectsClear: (): Promise<RecentProjectItem[]> => ipcRenderer.invoke('recent-projects-clear'),
 
   comfyStatus: (): Promise<ComfyStatus> => ipcRenderer.invoke('comfy-status'),
   comfyModels: (): Promise<InstalledModel[]> => ipcRenderer.invoke('comfy-models'),

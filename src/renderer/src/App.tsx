@@ -11,6 +11,7 @@ import MediaAccessBanner from './components/MediaAccessBanner'
 import UpdateBanner from './components/UpdateBanner'
 import { useEditorStore } from './store'
 import { importPaths } from './lib/inspect'
+import { openProjectFile, saveProjectFile } from './lib/projectFile'
 
 export default function App(): JSX.Element {
   const [view, setView] = useState<'home' | 'editor'>('home')
@@ -84,6 +85,18 @@ export default function App(): JSX.Element {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
         e.preventDefault()
         if (s.selectedClipId) s.duplicateClip(s.selectedClipId)
+        return
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        void saveProjectFile({ saveAs: e.shiftKey }).then((r) => {
+          if (!r.ok && !r.cancelled && r.error) window.alert(`Bewaren mislukt: ${r.error}`)
+        })
+        return
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o') {
+        e.preventDefault()
+        void openProjectFile()
         return
       }
       if (e.code === 'Space') {
