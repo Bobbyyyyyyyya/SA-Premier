@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process'
 import type { WebContents } from 'electron'
 import type { Clip, ClipEffects, ExportProgress, ExportRequest, ExportStartResult } from '../shared/types'
 import { hasSeparateAudioClip, sanitizeCaptionText } from '../shared/types'
+import { clipSourceRange, clipSourceTime, freezeWindow } from '../shared/clipspeed'
 import { planAnimExport } from '../shared/textanim'
 import { flashEnableExpr, flickerFilters, grainFilter, mirrorFilter, shakeFilters, zoomFilters } from '../shared/videofx'
 
@@ -106,6 +107,120 @@ let current: { cmd: ffmpeg.FfmpegCommand | null; cancelled: boolean } | null = n
 
 const n = (v: number): string => Number.isFinite(v) ? v.toFixed(4) : '0'
 const IMAGE_INPUT = /\.(png|jpe?g|gif|webp|bmp)$/i
+
+export interface VideoClipSeg {
+  srcFrom: number
+  srcTo: number
+  tlStart: number
+  tlDur: number
+  frozen: boolean
+}
+
+/**
+ * Eén clip → hooguit 3 videosegmenten (ervoor / stil / erna). Zonder freeze
+ * is het één segment. Exporteerbaar gemaakt zodat de segmentlogica direct te
+ * testen is in plaats van via een kopie ervan.
+ */
+export function videoClipSegments(c: Clip): VideoClipSeg[] {
+  const fw = freezeWindow(c)
+  if (!fw) {
+    const r = clipSourceRange(c, 0, c.duration)
+    return [{ srcFrom: r.from, srcTo: r.to, tlStart: c.start, tlDur: c.duration, frozen: false }]
+  }
+  const segs: VideoClipSeg[] = []
+  const r1 = clipSourceRange(c, 0, fw.at)
+  if (fw.at > 0.001) {
+    segs.push({ srcFrom: r1.from, srcTo: r1.to, tlStart: c.start, tlDur: fw.at, frozen: false })
+  }
+  segs.push({
+    srcFrom: clipSourceTime(c, fw.at),
+    srcTo: clipSourceTime(c, fw.at) + 0.5,
+    tlStart: c.start + fw.at,
+    tlDur: fw.dur,
+    frozen: true
+  })
+  const rest = c.duration - (fw.at + fw.dur)
+  if (rest > 0.001) {
+    const r3 = clipSourceRange(c, fw.at + fw.dur, c.duration)
+    segs.push({ srcFrom: r3.from, srcTo: r3.to, tlStart: c.start + fw.at + fw.dur, tlDur: rest, frozen: false })
+  }
+  return segs
+}
+
+/**
+ * Filterketen voor één videosegment (zonder timeline-setpts). Dezelfde
+ * functie die buildCommand gebruikt — geen parallelle implementatie.
+ */
+export function videoSegFilters(
+  c: Clip,
+  sg: VideoClipSeg,
+  segIndex: number,
+  segTotal: number,
+  width: number,
+  height: number,
+  fps: number
+): string[] {
+  const fx: string[] = []
+  fx.push(`trim=start=${n(sg.srcFrom)}:end=${n(sg.srcTo)}`)
+  fx.push('setpts=PTS-STARTPTS')
+  if (c.reversed) fx.push('reverse')
+  fx.push(`scale=${width}:${height}:force_original_aspect_ratio=decrease`)
+  fx.push(`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`)
+  fx.push('setsar=1')
+  fx.push(`fps=${fps}`)
+  if (sg.frozen) {
+    // één frame eindeloos herhalen tot de freeze-duur vol is
+    fx.push(`tpad=stop_mode=clone:stop_duration=${n(sg.tlDur)}`)
+    fx.push(`trim=start=0:end=${n(sg.tlDur)}`)
+    fx.push('setpts=PTS-STARTPTS')
+  }
+  fx.push(...effectFilters(c.effects, width, height))
+  fx.push('format=rgba')
+  // fades alleen op de buitenranden, niet midden in een freeze
+  if (segIndex === 0 && c.transitionIn) {
+    fx.push(`fade=t=in:st=0:d=${n(c.transitionIn.duration)}:alpha=1`)
+  }
+  if (segIndex === segTotal - 1 && c.transitionOut) {
+    fx.push(`fade=t=out:st=${n(Math.max(0, sg.tlDur - c.transitionOut.duration))}:d=${n(c.transitionOut.duration)}:alpha=1`)
+  }
+  return fx
+}
+
+/**
+ * Filterketen voor het geluid van één clip (video met audio én losse
+ * audioclips), zonder timeline-setpts. Geeft null als dit geluid via een
+ * aparte audio-clip loopt (geen dubbel geluid).
+ */
+export function audioClipFilters(c: Clip, clips: Clip[]): string[] | null {
+  if (hasSeparateAudioClip(c, clips)) return null
+  const af: string[] = []
+  const fx = audioFilterChain(c.audioFx)
+  if (fx) af.push(fx)
+  if (c.transitionIn) {
+    af.push(`afade=t=in:st=0:d=${n(c.transitionIn.duration)}`)
+  }
+  if (c.transitionOut) {
+    af.push(`afade=t=out:st=${n(Math.max(0, c.duration - c.transitionOut.duration))}:d=${n(c.transitionOut.duration)}`)
+  }
+  // achteruit: het hele clip-geluid omkeren (na trim, vóór volume zodat de
+  // mute hieronder op de omgekeerde tijdlijn het juiste stuk raakt — de
+  // mute-grenzen zijn immers timeline-lokaal en veranderen niet mee)
+  const revA = c.reversed ? 'areverse,' : ''
+  // freeze: stilte in het venster; een aparte volume met enable, want de
+  // volume-waarde zelf evalueert ffmpeg één keer bij de start
+  const fwA = freezeWindow(c)
+  const muteA = fwA ? `volume=0:enable='between(t\\,${n(fwA.at)}\\,${n(fwA.at + fwA.dur)})'` : ''
+  // mute staat vóór de timeline-setpts omdat `t` in enable daar nog
+  // clip-lokaal is — exact het freeze-venster, ook bij achteruit
+  return [
+    `atrim=start=${n(c.sourceStart)}:end=${n(c.sourceStart + c.duration)}`,
+    'asetpts=PTS-STARTPTS',
+    ...(revA ? ['areverse'] : []),
+    `volume=${n(Math.max(0, c.volume))}`,
+    ...af,
+    ...(muteA ? [muteA] : [])
+  ]
+}
 
 function effectFilters(e: ClipEffects, width: number, height: number): string[] {
   const out: string[] = []
@@ -219,52 +334,32 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
     const idx = inIdx(c.assetPath)
 
     if (mode !== 'audio' && c.kind === 'video') {
-      const lbl = 'c' + c.id
-      const fx: string[] = []
-      fx.push(`trim=start=${n(c.sourceStart)}:end=${n(c.sourceStart + c.duration)}`)
-      fx.push('setpts=PTS-STARTPTS')
-      fx.push(`scale=${width}:${height}:force_original_aspect_ratio=decrease`)
-      fx.push(`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`)
-      fx.push('setsar=1')
-      fx.push(`fps=${fps}`)
-      fx.push(...effectFilters(c.effects, width, height))
-      fx.push('format=rgba')
-      if (c.transitionIn) {
-        fx.push(`fade=t=in:st=0:d=${n(c.transitionIn.duration)}:alpha=1`)
-      }
-      if (c.transitionOut) {
-        fx.push(`fade=t=out:st=${n(c.duration - c.transitionOut.duration)}:d=${n(c.transitionOut.duration)}:alpha=1`)
-      }
-      graph.push(`[${idx}:v]${fx.join(',')}[${lbl}]`)
-      const tl = 't' + c.id
-      graph.push(`[${lbl}]setpts=PTS+${n(c.start)}/TB[${tl}]`)
-      const segs = trackSegs.get(c.trackId) ?? []
-      segs.push(tl)
-      trackSegs.set(c.trackId, segs)
+      // Een freeze splitst de clip in hooguit 3 stukken (ervoor / stil /
+      // erna); zonder freeze is het één stuk. Elk stuk krijgt zijn eigen
+      // bron-bereik en timeline-positie; de overlay-laag legt ze gewoon
+      // achter elkaar, dus niet-overlappende stukken werken vanzelf.
+      const segs = videoClipSegments(c)
+      segs.forEach((sg, i) => {
+        const lbl = `c${c.id}s${i}`
+        const fx = videoSegFilters(c, sg, i, segs.length, width, height, fps)
+        graph.push(`[${idx}:v]${fx.join(',')}[${lbl}]`)
+        const tl = `t${c.id}s${i}`
+        graph.push(`[${lbl}]setpts=PTS+${n(sg.tlStart)}/TB[${tl}]`)
+        const arr = trackSegs.get(c.trackId) ?? []
+        arr.push(tl)
+        trackSegs.set(c.trackId, arr)
+      })
     }
 
     if (mode !== 'video' && asset.hasAudio) {
       // voorkom dubbel geluid: video met eigen audio-clip die overlapt → alleen die telt
-      if (hasSeparateAudioClip(c, clips)) {
+      const af = audioClipFilters(c, clips)
+      if (af === null) {
         // skip: audio komt via de aparte audio-clip
       } else {
         const al = 'a' + c.id
-        const af: string[] = []
-        // audio-effecten (EQ / compressor / ruisreductie / reverb) — voordat de
-        // fades erin, want die moeten op de 'droge' mix werken
-        const fx = audioFilterChain(c.audioFx)
-        if (fx) af.push(fx)
-        if (c.transitionIn) {
-          af.push(`afade=t=in:st=0:d=${n(c.transitionIn.duration)}`)
-        }
-        if (c.transitionOut) {
-          af.push(`afade=t=out:st=${n(Math.max(0, c.duration - c.transitionOut.duration))}:d=${n(c.transitionOut.duration)}`)
-        }
-        const afx = af.length ? af.join(',') + ',' : ''
         graph.push(
-          `[${idx}:a]atrim=start=${n(c.sourceStart)}:end=${n(c.sourceStart + c.duration)},` +
-          `asetpts=PTS-STARTPTS,volume=${n(Math.max(0, c.volume))},` +
-          `${afx}` +
+          `[${idx}:a]${af.join(',')},` +
           `asetpts=PTS+${n(c.start)}/TB,aformat=sample_rates=48000:channel_layouts=stereo[${al}]`
         )
         audioLabels.push(`[${al}]`)

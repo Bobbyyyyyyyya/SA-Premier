@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import { IconRobot, IconPalette, IconMusic, IconBox } from './icons'
+import { IconRobot, IconPalette, IconMusic, IconBox, IconCut, IconLock, IconSnap, IconCloud } from './icons'
 import type { RecentProjectItem } from '../../../shared/types'
 import { importFiles } from '../lib/inspect'
 import { mediaUrl } from '../lib/mediaUrl'
 import { openProjectFile, saveProjectFile } from '../lib/projectFile'
 import { useEditorStore, selectTotal } from '../store'
 import { formatTime } from '../lib/format'
-import logo from '../assets/logo.svg'
 
 function formatDate(ts: number): string {
   try {
@@ -22,6 +21,15 @@ function formatDate(ts: number): string {
     return ''
   }
 }
+
+const FEATURES = [
+  { icon: IconCut, title: 'Precisie-snijden', desc: 'Frame-nauwkeurig knippen, trimmen en splitsen' },
+  { icon: IconRobot, title: 'AI-gestuurd', desc: 'Ondertiteling, muziek en effecten — volledig offline' },
+  { icon: IconSnap, title: 'Magnetische timeline', desc: 'Clips plakken, glijden en schuiven automatisch' },
+  { icon: IconLock, title: '100% offline', desc: 'Geen cloud, geen accounts, geen data-verlies' },
+  { icon: IconCloud, title: 'Snel & licht', desc: 'Native app — geen browser, geen wachtrijen' },
+  { icon: IconPalette, title: 'Professionele kleur', desc: 'Kleurcorrectie en LUTs met directe preview' },
+]
 
 export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Element {
   const [recent, setRecent] = useState<RecentProjectItem[]>([])
@@ -51,11 +59,9 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
     setOpening(null)
     if (!r.ok) {
       if (r.missing) {
-        // Bestand weg (verplaatst/verwijderd): uit de lijst, en zeg het erbij
-        // in plaats van stil niets te doen.
-        setOpenError(`“${item.name}” staat niet meer op ${item.path} — uit de lijst gehaald.`)
+        setOpenError(`"${item.name}" staat niet meer op ${item.path} — uit de lijst gehaald.`)
       } else if (!r.cancelled) {
-        setOpenError(`“${item.name}” openen mislukt: ${r.error ?? 'onbekende fout'}`)
+        setOpenError(`"${item.name}" openen mislukt: ${r.error ?? 'onbekende fout'}`)
       }
       void refresh()
       return
@@ -66,35 +72,57 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
   const hasProject = clips.length > 0 || assets.length > 0
 
   return (
-    <div className="home home--light">
+    <div className="home">
       <div className="home-hero">
-        <div className="home-hero-bg" />
+        <div className="home-hero-glow home-hero-glow--1" />
+        <div className="home-hero-glow home-hero-glow--2" />
+        <div className="home-hero-grid" />
         <div className="home-hero-inner">
-          <div className="home-brand-block">
-            <img className="home-logo" src={logo} alt="SA Premier" />
-            <div className="home-brand home-brand--light">
-              SA<span>Premier</span>
-            </div>
-            <div className="home-tagline">CapCut × DaVinci — licht, snel, altijd offline</div>
-            <div className="home-meta">
-              <span className="home-pill">{assets.length} media</span>
-              <span className="home-pill">{clips.length} clips</span>
-              <span className="home-pill">{formatTime(total, project.fps)} timeline</span>
-              <span className="home-pill">{project.width}×{project.height} · {project.fps}fps</span>
+          <div className="home-hero-left">
+            <div className="home-brand-row">
+              <svg className="home-logo" viewBox="0 0 512 512" aria-hidden="true">
+                <defs>
+                  <linearGradient id="hg-bg" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0" stopColor="#241a15" />
+                    <stop offset="1" stopColor="#100f0d" />
+                  </linearGradient>
+                  <linearGradient id="hg-accent" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0" stopColor="#ffa14a" />
+                    <stop offset="0.55" stopColor="#ff7f2a" />
+                    <stop offset="1" stopColor="#e64d0f" />
+                  </linearGradient>
+                </defs>
+                <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#hg-bg)" />
+                <rect x="16" y="16" width="480" height="480" rx="108" fill="none" stroke="url(#hg-accent)" strokeWidth="12" />
+                <g fill="url(#hg-accent)">
+                  <rect x="76" y="96" width="26" height="40" rx="9" />
+                  <rect x="76" y="152" width="26" height="40" rx="9" />
+                  <rect x="76" y="208" width="26" height="40" rx="9" />
+                  <rect x="410" y="96" width="26" height="40" rx="9" />
+                  <rect x="410" y="152" width="26" height="40" rx="9" />
+                  <rect x="410" y="208" width="26" height="40" rx="9" />
+                </g>
+                <path d="M212 138 L212 330 L344 234 Z" fill="url(#hg-accent)" />
+                <g fill="#ffffff" fillOpacity="0.92">
+                  <rect x="140" y="362" width="232" height="22" rx="11" />
+                </g>
+                <g fill="#ffffff" fillOpacity="0.55">
+                  <rect x="176" y="398" width="160" height="18" rx="9" />
+                </g>
+              </svg>
+              <div>
+                <div className="home-brand">SA<span>Premier</span></div>
+              </div>
             </div>
           </div>
-          <div className="home-hero-actions">
-            <button className="home-cta primary" onClick={async () => {
+          <div className="home-hero-right">
+            <button className="home-cta home-cta--primary" onClick={async () => {
               if (hasProject && !window.confirm('Nieuw project starten? Huidige timeline wordt geleegd (opgeslagen project blijft bewaard).')) return
               useEditorStore.getState().resetProject()
               onOpen()
-            }} title="＋
-              
-                Nieuw project" data-tooltip="＋
-              
-                Nieuw project">
-              <span className="cta-icon">＋</span>
-              <span>
+            }}>
+              <span className="home-cta-icon">＋</span>
+              <span className="home-cta-text">
                 <b>Nieuw project</b>
                 <i>Lege timeline — jij bepaalt</i>
               </span>
@@ -102,22 +130,16 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
             <button className="home-cta" onClick={async () => {
               await importFiles()
               onOpen()
-            }} title="⬆
-              
-                Media importeren" data-tooltip="⬆
-              
-                Media importeren">
-              <span className="cta-icon">⬆</span>
-              <span>
+            }}>
+              <span className="home-cta-icon">⬆</span>
+              <span className="home-cta-text">
                 <b>Media importeren</b>
-                <i>Meerdere video’s = één project</i>
+                <i>Meerdere video's = één project</i>
               </span>
             </button>
-            <button className="home-cta ghost" onClick={() => window.dispatchEvent(new Event('open-ai-setup'))} title="AI-setup
-                Licht / Volledig / Aangep" data-tooltip="AI-setup
-                Licht / Volledig / Aangep">
-              <span className="cta-icon"><IconRobot size={18} /></span>
-              <span>
+            <button className="home-cta home-cta--ghost" onClick={() => window.dispatchEvent(new Event('open-ai-setup'))}>
+              <span className="home-cta-icon"><IconRobot size={18} /></span>
+              <span className="home-cta-text">
                 <b>AI-setup</b>
                 <i>Licht / Volledig / Aangepast</i>
               </span>
@@ -126,16 +148,13 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
         </div>
       </div>
 
-      <div className="home-body home-body--light">
-        {/* Huidig project — fix: meerdere video's = één project */}
+      <div className="home-body">
         <section className="home-section">
           <div className="home-section-head">
             <h2>Huidig project</h2>
-            <span className="home-hint">Meerdere video’s die je importeert komen in <b>één</b> project (één timeline), niet als losse projecten.</span>
+            <span className="home-hint">Meerdere video's die je importeert komen in <b>één</b> project (één timeline), niet als losse projecten.</span>
           </div>
           {hasProject ? (
-            /* De hele kaart opent de timeline — klikken op de kaart zelf moet
-               werken, niet alleen op de knop ernaast. */
             <div
               className="project-card project-card--clickable"
               role="button"
@@ -147,8 +166,6 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
                   onOpen()
                 }
               }}
-              title="Open de timeline"
-              data-tooltip="Open de timeline"
             >
               <div className="project-thumb" style={assets[0]?.thumbnail ? { backgroundImage: `url(${assets[0].thumbnail})` } : assets[0] ? { backgroundImage: `url(${mediaUrl(assets[0].path)})` } : {}}>
                 {!assets[0]?.thumbnail && !assets[0] && <span className="project-thumb-placeholder">Geen media</span>}
@@ -171,7 +188,7 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
                 </div>
               </div>
               <div className="project-actions">
-                <button className="primary" onClick={onOpen} title="Open timeline →" data-tooltip="Open timeline →">Open timeline →</button>
+                <button className="primary" onClick={onOpen}>Open timeline →</button>
                 <button
                   onClick={async (e) => {
                     e.stopPropagation()
@@ -179,8 +196,6 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
                     if (!r.ok && !r.cancelled && r.error) window.alert(`Bewaren mislukt: ${r.error}`)
                     void refresh()
                   }}
-                  title="Bewaar als projectbestand"
-                  data-tooltip="Bewaar als projectbestand"
                 >
                   Bewaar
                 </button>
@@ -192,8 +207,6 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
                     useEditorStore.getState().resetProject()
                     void refresh()
                   }}
-                  title="Legen"
-                  data-tooltip="Legen"
                 >
                   Legen
                 </button>
@@ -204,20 +217,19 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
               <div className="project-empty-icon"><IconBox size={32} /></div>
               <div>
                 <div className="project-empty-title">Nog geen project</div>
-                <div className="project-empty-sub">Importeer meerdere video’s tegelijk — ze komen samen in één timeline. Of start met <b>Nieuw project</b>.</div>
+                <div className="project-empty-sub">Importeer meerdere video's tegelijk — ze komen samen in één timeline. Of start met <b>Nieuw project</b>.</div>
               </div>
-              <button className="primary" onClick={async () => { await importFiles(); onOpen() }} title="Importeer nu" data-tooltip="Importeer nu">Importeer nu</button>
+              <button className="primary" onClick={async () => { await importFiles(); onOpen() }}>Importeer nu</button>
             </div>
           )}
         </section>
 
-        {/* Recent — uitsluitend bewaarde projecten, geen losse media meer */}
         <section className="home-section">
           <div className="home-section-head">
             <h2>Recent</h2>
             <div className="home-section-actions">
               {recent.length > 0 && (
-                <button className="ghost small" onClick={async () => { await window.api.recentProjectsClear(); void refresh() }} title="Wissen" data-tooltip="Wissen">
+                <button className="ghost small" onClick={async () => { await window.api.recentProjectsClear(); void refresh() }}>
                   Wissen
                 </button>
               )}
@@ -225,13 +237,16 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
           </div>
           {openError && <div className="home-error" role="alert">{openError}</div>}
           {recent.length === 0 ? (
-            <div className="home-empty">Nog geen bewaarde projecten. Open de timeline, monteer iets en kies <b>Bewaar</b> — dan staat het hier.</div>
+            <div className="home-empty">
+              <div className="home-empty-icon"><IconBox size={28} /></div>
+              <div className="home-empty-text">Nog geen bewaarde projecten. Open de timeline, monteer iets en kies <b>Bewaar</b> — dan staat het hier.</div>
+            </div>
           ) : (
-            <div className="recent-grid recent-grid--light">
+            <div className="recent-grid">
               {recent.map((p) => (
-                <div key={p.path} className="recent-card recent-card--light" title={`${p.name}\n${p.path}`}>
+                <div key={p.path} className="recent-card" title={`${p.name}\n${p.path}`}>
                   <div
-                    className="recent-thumb recent-thumb--light"
+                    className="recent-thumb"
                     style={p.thumbnail ? { backgroundImage: `url(${p.thumbnail})` } : undefined}
                     onClick={() => void openCard(p)}
                   >
@@ -239,7 +254,7 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
                     {opening === p.path && <div className="recent-opening">Opening…</div>}
                     <span className="recent-count">{p.clipCount} clips</span>
                   </div>
-                  <div className="recent-name recent-name--light" title={p.name}>
+                  <div className="recent-name" title={p.name}>
                     {p.name}
                   </div>
                   <div className="recent-sub">
@@ -249,6 +264,21 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
               ))}
             </div>
           )}
+        </section>
+
+        <section className="home-section home-section--features">
+          <div className="home-section-head">
+            <h2>Waarom SA Premier</h2>
+          </div>
+          <div className="features-grid">
+            {FEATURES.map((f) => (
+              <div key={f.title} className="feature-card">
+                <div className="feature-icon"><f.icon size={20} /></div>
+                <div className="feature-title">{f.title}</div>
+                <div className="feature-desc">{f.desc}</div>
+              </div>
+            ))}
+          </div>
         </section>
       </div>
     </div>

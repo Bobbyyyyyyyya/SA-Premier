@@ -1248,14 +1248,32 @@ export const useEditorStore = create<EditorState>()(
       const secondDur = orig.start + orig.duration - cutAt
       const isMedia = orig.kind === 'video' || orig.kind === 'audio'
       const secondSource = isMedia ? orig.sourceStart + firstDur : 0
-      const first: Clip = { ...orig, duration: firstDur, transitionOut: null }
+      // Een freeze-venster loopt mee met de helft waarin het valt (lokale
+      // tijden omgerekend); valt het buiten een helft, dan verliest die helft
+      // hem — anders zou een ingekorte clip naar een frame buiten zichzelf wijzen.
+      const splitFreeze = (
+        from: number,
+        len: number
+      ): { freezeAt: number | null; freezeDuration: number } => {
+        const at = orig.freezeAt
+        const dur = orig.freezeDuration
+        if (at == null || !(dur != null && dur > 0)) return { freezeAt: null, freezeDuration: 0 }
+        const a = Math.max(at, from)
+        const b = Math.min(at + dur, from + len)
+        if (b - a <= 0.02) return { freezeAt: null, freezeDuration: 0 }
+        return { freezeAt: a - from, freezeDuration: b - a }
+      }
+      const firstFreeze = splitFreeze(0, firstDur)
+      const secondFreeze = splitFreeze(firstDur, secondDur)
+      const first: Clip = { ...orig, duration: firstDur, transitionOut: null, ...firstFreeze }
       const second: Clip = {
         ...orig,
         id: uid(),
         start: cutAt,
         duration: secondDur,
         sourceStart: secondSource,
-        transitionIn: null
+        transitionIn: null,
+        ...secondFreeze
       }
       set((s) => ({
         clips: [...s.clips.filter((c) => c.id !== id), first, second],

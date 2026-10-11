@@ -779,6 +779,85 @@ export default function Inspector(): JSX.Element {
           </div>
         </Section>
 
+        {(clip.kind === 'video' || clip.kind === 'audio') && (
+          <Section
+            title="Snelheid"
+            defaultOpen={false}
+            badge={clip.reversed ? 'achteruit' : clip.freezeAt != null && (clip.freezeDuration ?? 0) > 0 ? 'freeze' : undefined}
+          >
+            <div className="ctl">
+              <label style={{ width: 76 }}>Achteruit</label>
+              <input
+                type="checkbox"
+                checked={!!clip.reversed}
+                onChange={(e) => updateClip(clip.id, { reversed: e.target.checked || undefined })}
+                title="Clip achterstevoren afspelen"
+              />
+              <span className="val">{clip.reversed ? 'aan' : 'uit'}</span>
+            </div>
+            <div className="ctl">
+              <label style={{ width: 76 }}>Freeze op</label>
+              <input
+                type="range"
+                min={0}
+                max={Math.max(0.1, clip.duration - 0.05)}
+                step={0.05}
+                value={Math.min(clip.freezeAt ?? 0, Math.max(0, clip.duration - 0.05))}
+                onChange={(e) => {
+                  const at = +e.target.value
+                  const dur = Math.min(clip.freezeDuration ?? 1, Math.max(0.1, clip.duration - at))
+                  updateClip(clip.id, { freezeAt: at, freezeDuration: dur })
+                }}
+              />
+              <span className="val">{(clip.freezeAt ?? 0).toFixed(2)}s</span>
+            </div>
+            <div className="ctl">
+              <label style={{ width: 76 }}>Freeze-duur</label>
+              <input
+                type="range"
+                min={0.1}
+                max={Math.max(0.2, clip.duration)}
+                step={0.1}
+                value={Math.min(clip.freezeDuration ?? 1, Math.max(0.1, clip.duration - (clip.freezeAt ?? 0)))}
+                onChange={(e) => {
+                  const at = Math.min(clip.freezeAt ?? 0, Math.max(0, clip.duration - 0.05))
+                  const dur = Math.min(+e.target.value, Math.max(0.1, clip.duration - at))
+                  updateClip(clip.id, { freezeAt: at, freezeDuration: dur })
+                }}
+              />
+              <span className="val">{(clip.freezeDuration ?? 1).toFixed(1)}s</span>
+            </div>
+            <div className="btn-row">
+              <button
+                onClick={() => {
+                  const s = useEditorStore.getState()
+                  const at = Math.min(Math.max(0, s.playhead - clip.start), Math.max(0, clip.duration - 0.05))
+                  const dur = Math.min(clip.freezeDuration ?? 1, Math.max(0.1, clip.duration - at))
+                  updateClip(clip.id, { freezeAt: at, freezeDuration: dur })
+                }}
+                title="Zet freeze op de playhead-positie"
+                data-tooltip="Zet freeze op de playhead-positie"
+              >
+                Van playhead
+              </button>
+              {(clip.freezeAt != null || (clip.freezeDuration ?? 0) > 0) && (
+                <button
+                  className="danger-ghost"
+                  onClick={() => updateClip(clip.id, { freezeAt: null, freezeDuration: 0 })}
+                  title="Freeze wissen"
+                  data-tooltip="Freeze wissen"
+                >
+                  Wis freeze
+                </button>
+              )}
+            </div>
+            <div className="ai-hint">
+              Tijdens de freeze staat het beeld stil op dat frame; de video eronder in dat stuk wordt overgeslagen, de timeline zelf blijft even lang.
+              Achteruit dempt het geluid in de preview (terugspoelen kan niet live); in de export wordt het geluid echt omgekeerd.
+            </div>
+          </Section>
+        )}
+
         {subCount > 0 && <SubtitlePanel />}
 
         {hasAudio && (

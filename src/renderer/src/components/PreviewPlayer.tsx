@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useEditorStore, selectTotal } from '../store'
 import { renderFrame, clipAudioGain, hitTestTextClip, textSelectionFrame, hitTestTextHandle } from '../lib/compositor'
+import { playbackMode } from '../../../shared/clipspeed'
 import type { TextCorner } from '../lib/compositor'
 
 /** Momentopname bij het vastpakken van een hoekgreep. */
@@ -163,7 +164,7 @@ export default function PreviewPlayer(): JSX.Element {
         if (!asset) continue
         players.element(clip.id, asset, clip.kind)
         players.setAudioEffects(clip.id, clip.audioFx)
-        players.seekTo(clip.id, clip.start, clip.duration, clip.sourceStart, state.playhead, clip.volume * clipAudioGain(clip, state.playhead), track?.muted ?? false)
+        players.seekTo(clip.id, clip.start, clip.duration, clip.sourceStart, state.playhead, clip.volume * clipAudioGain(clip, state.playhead), track?.muted ?? false, playbackMode(clip, state.playhead))
       }
       // eerste frame zodra het element data heeft (seeked of al klaar)
       const vis = state.clips.find((cl) => cl.kind !== 'text' && state.playhead >= cl.start && state.playhead < cl.start + cl.duration)
@@ -237,7 +238,8 @@ export default function PreviewPlayer(): JSX.Element {
           muted,
           t,
           true,
-          clip.volume * clipAudioGain(clip, t)
+          clip.volume * clipAudioGain(clip, t),
+          playbackMode(clip, t)
         )
       }
       renderFrameAt(t)
@@ -271,7 +273,7 @@ export default function PreviewPlayer(): JSX.Element {
             for (const clip of s.clips) {
               if (clip.kind === 'text') continue
               const track = s.tracks.find((x) => x.id === clip.trackId)
-              players.seekTo(clip.id, clip.start, clip.duration, clip.sourceStart, s.playhead, clip.volume * clipAudioGain(clip, s.playhead), track?.muted ?? false)
+              players.seekTo(clip.id, clip.start, clip.duration, clip.sourceStart, s.playhead, clip.volume * clipAudioGain(clip, s.playhead), track?.muted ?? false, playbackMode(clip, s.playhead))
             }
           }
         }
@@ -281,12 +283,16 @@ export default function PreviewPlayer(): JSX.Element {
       // Slepen van een tekstclip raakt alleen de clips-array aan. De media-clips zijn
       // dan object-identiek onveranderd, en die hoeven dus niet opnieuw te worden
       // geseekt — dat was een seek per media-clip per pointermove en sloopte de app.
+      // MAAR: een playhead-verandering móét altijd syncen (timeline-ruler,
+      // pijltjes, scrubbar). Zonder dit blijft het beeld staan op het oude
+      // frame terwijl de playhead al verder is.
       const mediaChanged =
         s.assets !== prev.assets ||
         s.tracks !== prev.tracks ||
         s.clips.length !== prev.clips.length ||
         s.clips.some((c, i) => c.kind !== 'text' && c !== prev.clips[i])
-      if (players && mediaChanged) {
+      const posChanged = s.playhead !== prev.playhead
+      if (players && (mediaChanged || posChanged)) {
         // verwijderde clips opruimen
         const alive = new Set(s.clips.map((c) => c.id))
         for (const c of prev.clips) {
@@ -300,7 +306,7 @@ export default function PreviewPlayer(): JSX.Element {
           // EQ/compressor/reverb volgen de clip; zonder effecten blijft het
           // native element-volume in gebruik
           players.setAudioEffects(clip.id, clip.audioFx)
-          players.seekTo(clip.id, clip.start, clip.duration, clip.sourceStart, s.playhead, clip.volume * clipAudioGain(clip, s.playhead), track?.muted ?? false)
+          players.seekTo(clip.id, clip.start, clip.duration, clip.sourceStart, s.playhead, clip.volume * clipAudioGain(clip, s.playhead), track?.muted ?? false, playbackMode(clip, s.playhead))
         }
         const vis = s.clips.find((c) => c.kind !== 'text' && s.playhead >= c.start && s.playhead < c.start + c.duration)
         if (vis) {
@@ -329,7 +335,7 @@ export default function PreviewPlayer(): JSX.Element {
         const asset = s.assets.find((a) => a.id === clip.assetId)
         const track = s.tracks.find((x) => x.id === clip.trackId)
         if (asset) players.element(clip.id, asset, clip.kind)
-        players.seekTo(clip.id, clip.start, clip.duration, clip.sourceStart, nt, clip.volume, track?.muted ?? false)
+        players.seekTo(clip.id, clip.start, clip.duration, clip.sourceStart, nt, clip.volume, track?.muted ?? false, playbackMode(clip, nt))
       }
       // wacht op seeked voor zichtbare clip, dan nogmaals renderen (voorkomt zwart)
       const vis = s.clips.find((c) => c.kind !== 'text' && nt >= c.start && nt < c.start + c.duration)

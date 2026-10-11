@@ -259,11 +259,45 @@ export class PlayerManager {
     trackMuted: boolean,
     time: number,
     playing: boolean,
-    clipVolume = 1
+    clipVolume = 1,
+    mode?: { reversed?: boolean; holdSource?: number | null }
   ): void {
     const el = this.els.get(clipId)
     if (!el || !(el instanceof HTMLMediaElement)) return
     this.applyVolume(el, clipVolume, trackMuted)
+    // Achteruit kan een <video>/<audio> niet zelf, en een freeze mag niet
+    // doorlopen: in beide gevallen pauzeren en het element met de hand op de
+    // juiste bron-tijd zetten. Het geluid staat dan al stil via clipAudioGain.
+    if (mode?.holdSource != null) {
+      if (!el.paused) {
+        try { el.pause() } catch { /* ignore */ }
+      }
+      if (Math.abs(el.currentTime - mode.holdSource) > 0.05) {
+        try {
+          el.currentTime = clamp(mode.holdSource, 0, el.duration || mode.holdSource)
+        } catch {
+          // not seekable yet
+        }
+      }
+      return
+    }
+    if (mode?.reversed) {
+      if (!el.paused) {
+        try { el.pause() } catch { /* ignore */ }
+      }
+      if (kind === 'video') {
+        const local = time - clipStart
+        if (local >= 0 && local < clipDur) {
+          const mirrored = sourceStart + clipDur - local
+          try {
+            el.currentTime = clamp(mirrored, 0, el.duration || mirrored)
+          } catch {
+            // not seekable yet
+          }
+        }
+      }
+      return
+    }
     const expected = this.expectedTime(clipStart, clipDur, sourceStart, time)
     if (playing && expected !== null) {
       if (Math.abs(el.currentTime - expected) > 0.4) {
@@ -288,13 +322,46 @@ export class PlayerManager {
     sourceStart: number,
     time: number,
     clipVolume?: number,
-    trackMuted?: boolean
+    trackMuted?: boolean,
+    mode?: { reversed?: boolean; holdSource?: number | null }
   ): void {
     const el = this.els.get(clipId)
     if (!el || !(el instanceof HTMLMediaElement)) return
     if (clipVolume !== undefined || trackMuted !== undefined) {
       const prev = el as HTMLMediaElement & { _clipVol?: number; _trackMuted?: boolean }
       this.applyVolume(el, clipVolume ?? prev._clipVol ?? 1, trackMuted ?? prev._trackMuted ?? false)
+    }
+    if (mode?.holdSource != null) {
+      if (!el.paused) {
+        try { el.pause() } catch { /* ignore */ }
+      }
+      if (Math.abs(el.currentTime - mode.holdSource) > 0.05) {
+        try {
+          el.currentTime = clamp(mode.holdSource, 0, el.duration || mode.holdSource)
+        } catch {
+          // not seekable yet
+        }
+      }
+      return
+    }
+    if (mode?.reversed) {
+      // scrubben naar de gespiegelde bron-tijd (alleen beeld; geluid is stil)
+      const local = time - clipStart
+      if (local < 0 || local >= clipDur) {
+        if (!el.paused) {
+          try { el.pause() } catch { /* ignore */ }
+        }
+        return
+      }
+      const mirrored = sourceStart + clipDur - local
+      if (Math.abs(el.currentTime - mirrored) > 0.05) {
+        try {
+          el.currentTime = clamp(mirrored, 0, el.duration || mirrored)
+        } catch {
+          // not seekable yet
+        }
+      }
+      return
     }
     const expected = this.expectedTime(clipStart, clipDur, sourceStart, time)
     if (expected === null) {

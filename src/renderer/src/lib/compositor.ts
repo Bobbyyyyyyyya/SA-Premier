@@ -2,6 +2,7 @@ import type { Clip, ClipEffects } from '../../../shared/types'
 import { DEFAULT_EFFECTS } from '../../../shared/types'
 import { evalAnimDir, isPreviewOnlyAnim, isText3DAnim } from '../../../shared/textanim'
 import { VFX, flashAlpha, flickerDelta, shakeAmpPx, shakeFrac, zoomFactor } from '../../../shared/videofx'
+import { isFrozenAt } from '../../../shared/clipspeed'
 import type { EditorState } from '../store'
 import type { PlayerManager } from './player'
 
@@ -125,8 +126,14 @@ export function clipTransitionXform(
   return { dx, dy, scale }
 }
 
-/** Audio-gain (0..1) op basis van transition in/out — audio en video met geluid. */
+/**
+ * Audio-gain (0..1) op basis van transition in/out — audio en video met geluid.
+ * Achteruit is in de preview stil (terugspoelen kan een element niet; de
+ * export keert het geluid wel echt om) en tijdens een freeze staat het stil.
+ */
 export function clipAudioGain(clip: Clip, time: number): number {
+  if (clip.reversed) return 0
+  if (isFrozenAt(clip, time - clip.start)) return 0
   return clipAlpha(clip, time)
 }
 

@@ -1285,6 +1285,23 @@ export interface Clip {
   extractedFromAssetId?: string
   /** EQ / compressor / ruisreductie / reverb op dit clipje (audio én video) */
   audioFx?: AudioEffects
+  /**
+   * Achterstevoren afspelen (alleen video/audio, geen tekst). De preview
+   * stapt het beeld terug (een <video> kan niet zelf achteruit) en dempt het
+   * geluid — dat kan niet achteruit afgespeeld worden zonder het eerst om te
+   * keren. De export keert wél echt om (reverse/areverse).
+   */
+  reversed?: boolean
+  /**
+   * Freeze: lokale seconde waarop het beeld stilstaat, null = uit. Tijdens
+   * [freezeAt, freezeAt + freezeDuration) staat het frame van `freezeAt` stil;
+   * de video eronder in dat stuk wordt overgeslagen, de timeline zelf
+   * verandert niet (geen ripple). Het geluid van de clip staat in dat stuk
+   * stil; in de export wordt het gedempt.
+   */
+  freezeAt?: number | null
+  /** Freeze-duur in seconden. */
+  freezeDuration?: number
 }
 
 export interface Project {
