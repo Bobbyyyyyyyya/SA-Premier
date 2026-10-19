@@ -30,6 +30,7 @@ export type PlayerElement = HTMLMediaElement | HTMLImageElement
 
 export class PlayerManager {
   private els = new Map<string, PlayerElement>()
+  private ids = new WeakMap<PlayerElement, string>()
   private graphs = new Map<string, AudioGraph>()
   private container: HTMLDivElement
   private masterVolume = 1
@@ -81,8 +82,8 @@ export class PlayerManager {
   }
 
   private clipIdOf(el: PlayerElement): string {
-    for (const [id, x] of this.els) if (x === el) return id
-    return ''
+    // O(1) via reverse-map i.p.v. lineair door alle elementen per volumewijziging
+    return this.ids.get(el) ?? ''
   }
 
   /** AudioContext pas aanmaken als er echt iets te horen valt te krijgen. */
@@ -229,6 +230,7 @@ export class PlayerManager {
       }
       this.container.appendChild(el as Node)
       this.els.set(clipId, el)
+      this.ids.set(el, clipId)
     } else if (el instanceof HTMLMediaElement) {
       // als het asset-pad veranderde (clip hergebruikt), src verversen
       const want = mediaUrl(asset.path)
@@ -397,6 +399,7 @@ export class PlayerManager {
       }
       try { (el as unknown as HTMLElement).remove() } catch { /* ignore */ }
       this.els.delete(clipId)
+      this.ids.delete(el)
     }
   }
 

@@ -49,13 +49,18 @@ export default function PreviewPlayer(): JSX.Element {
   } | null>(null)
   const hasSubtitles = useEditorStore((s) => s.clips.some((c) => c.subtitle))
   const selectedId = useEditorStore((s) => s.selectedClipId)
-  const playheadNow = useEditorStore((s) => s.playhead)
 
   /**
    * De geselecteerde tekstclip die je kunt verslepen, of null als er niets
    * te slepen valt. Samen met `hint` onderscheidt dit "niets te doen" van
    * "knop doet niks" — een titel buiten de playhead staat nu eenmaal niet op
    * het scherm en is dus niet te pakken.
+   *
+   * Bewust géén playhead-abonnement: dat her-renderde deze hele component
+   * 60x per seconde tijdens afspelen. De zichtbaarheid wordt bij selectie
+   * bepaald (selectClip zet de playhead dan toch in de clip) en bij het
+   * vastpakken opnieuw via hit-test — licht stale tijdens playback, maar
+   * slepen blijft altijd werken.
    */
   const { dragTextId, offScreenText } = useMemo(() => {
     if (!selectedId) return { dragTextId: null, offScreenText: false }
@@ -68,9 +73,9 @@ export default function PreviewPlayer(): JSX.Element {
       return { dragTextId: null, offScreenText: false }
     }
     if (s.tracks.find((t) => t.id === c.trackId)?.locked) return { dragTextId: null, offScreenText: false }
-    const visible = playheadNow >= c.start && playheadNow < c.start + c.duration
+    const visible = s.playhead >= c.start && s.playhead < c.start + c.duration
     return { dragTextId: visible ? c.id : null, offScreenText: !visible }
-  }, [selectedId, playheadNow])
+  }, [selectedId])
 
   const dragHint = offScreenText
     ? 'Deze titel staat niet op deze tijd — scrub naar de titel om hem in beeld te slepen.'
@@ -80,7 +85,10 @@ export default function PreviewPlayer(): JSX.Element {
 
   const project = useEditorStore((s) => s.project)
   const playing = useEditorStore((s) => s.playing)
-  const total = useEditorStore(selectTotal)
+  // totaal alleen herberekenen als clips veranderen — selectTotal als selector
+  // liep bij elke store-update (dus 60x/s playhead-ticks) over alle clips
+  const clipsForTotal = useEditorStore((s) => s.clips)
+  const total = useMemo(() => clipsForTotal.reduce((m, c) => Math.max(m, c.start + c.duration), 0), [clipsForTotal])
   const timeRef = useRef<HTMLSpanElement | null>(null)
   const scrubRef = useRef<HTMLInputElement | null>(null)
   // alleen seeken als muis bewust op de scrub-balk staat (geen toevallig overheen swipen/wielen)
@@ -114,29 +122,31 @@ export default function PreviewPlayer(): JSX.Element {
    * wél of het beeld laadt, of dat het bestand ontbreekt/niet decodeert.
    */
   useEffect(() => {
+    // alleen setState als de melding echt verandert — anders re-rendert dit
+    // elke 600ms voor niets
+    let last: string | null = null
     const t = setInterval(() => {
       const st = useEditorStore.getState()
+      let next: string | null = null
       const vis = st.clips.find((c) => c.kind !== 'text' && st.playhead >= c.start && st.playhead < c.start + c.duration)
-      if (!vis) {
-        setPreviewMsg(null)
-        return
+      if (vis) {
+        const asset = st.assets.find((a) => a.id === vis.assetId)
+        if (!asset) {
+          next = 'Media ontbreekt in het project'
+        } else {
+          const el = playersRef.current?.element(vis.id, asset, vis.kind)
+          if (el instanceof HTMLMediaElement) {
+            if (el.error) {
+              next = `Kan beeld niet laden: ${el.error.message || 'decoderingsfout'}`
+            } else if (el.readyState < 2) {
+              next = 'Beeld laden…'
+            }
+          }
+        }
       }
-      const asset = st.assets.find((a) => a.id === vis.assetId)
-      if (!asset) {
-        setPreviewMsg('Media ontbreekt in het project')
-        return
-      }
-      const el = playersRef.current?.element(vis.id, asset, vis.kind)
-      if (!(el instanceof HTMLMediaElement)) {
-        setPreviewMsg(null)
-        return
-      }
-      if (el.error) {
-        setPreviewMsg(`Kan beeld niet laden: ${el.error.message || 'decoderingsfout'}`)
-      } else if (el.readyState < 2) {
-        setPreviewMsg('Beeld laden…')
-      } else {
-        setPreviewMsg(null)
+      if (next !== last) {
+        last = next
+        setPreviewMsg(next)
       }
     }, 600)
     return () => clearInterval(t)
@@ -298,14 +308,19 @@ export default function PreviewPlayer(): JSX.Element {
         for (const c of prev.clips) {
           if (!alive.has(c.id)) players.removeClip(c.id)
         }
-        for (const clip of s.clips) {
+        // alleen playhead veranderd (scrubben)? dan alleen zichtbare clips
+        // seeken — alle clips seeken per scrub-stap sloopte de app
+        const targets = mediaChanged
+          ? s.clips
+          : s.clips.filter((c) => c.kind !== 'text' && s.playhead >= c.start - 0.5 && s.playhead < c.start + c.duration + 0.5)
+        for (const clip of targets) {
           if (clip.kind === 'text') continue
           const asset = s.assets.find((a) => a.id === clip.assetId)
           const track = s.tracks.find((x) => x.id === clip.trackId)
           if (asset) players.element(clip.id, asset, clip.kind)
           // EQ/compressor/reverb volgen de clip; zonder effecten blijft het
           // native element-volume in gebruik
-          players.setAudioEffects(clip.id, clip.audioFx)
+          if (mediaChanged) players.setAudioEffects(clip.id, clip.audioFx)
           players.seekTo(clip.id, clip.start, clip.duration, clip.sourceStart, s.playhead, clip.volume * clipAudioGain(clip, s.playhead), track?.muted ?? false, playbackMode(clip, s.playhead))
         }
         const vis = s.clips.find((c) => c.kind !== 'text' && s.playhead >= c.start && s.playhead < c.start + c.duration)

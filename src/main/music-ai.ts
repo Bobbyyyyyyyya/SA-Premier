@@ -178,6 +178,18 @@ export function stopMusicAI(): void {
   }
 }
 
+/**
+ * Harde stop bij afsluiten: eigen child én alles wat nog op de poort
+ * luistert. Nodig omdat de server detached + unref'd start — zombies uit
+ * eerdere sessies staan niet meer in `server` en overleefden `stopMusicAI`.
+ */
+export function forceStopMusicAI(): void {
+  stopMusicAI()
+  try {
+    execSync(`lsof -ti :${PORT} | xargs kill -9 2>/dev/null`, { stdio: 'ignore' })
+  } catch { /* niets meer op de poort */ }
+}
+
 export function killOrphanServers(): void {
   const bin = pythonBin()
   try {

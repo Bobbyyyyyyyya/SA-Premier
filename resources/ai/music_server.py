@@ -82,6 +82,36 @@ def normalize_audio(wav, target_peak=0.95):
     return wav
 
 
+def audio_quality(wav, sr):
+    """RMS + mediane zero-crossing rate over vensters van 1s.
+
+    Witte ruis heeft een ZCR van ~0.5 (elke sample slaat om), muziek zit
+    vrijwel altijd onder 0.25. Goedkoop en betrouwbaar genoeg om een
+    mislukte generatie (bekend MPS-probleem: alleen ruis) te herkennen.
+    """
+    x = np.asarray(wav, dtype=np.float64)
+    rms = float(np.sqrt(np.mean(x ** 2)))
+    if rms < 1e-6:
+        return rms, 0.0
+    win = max(256, int(sr))
+    zcrs = []
+    for start in range(0, len(x), win):
+        seg = x[start:start + win]
+        if len(seg) < win // 4:
+            continue
+        s = np.sign(seg)
+        s[s == 0] = 1
+        zcrs.append(float(np.mean(np.abs(np.diff(s))) / 2.0))
+    zcr = float(np.median(zcrs)) if zcrs else 0.0
+    return rms, zcr
+
+
+def looks_like_noise(rms, zcr):
+    if rms < 5e-4:
+        return True  # (vrijwel) stilte
+    return zcr > 0.35
+
+
 async def status_handler(request):
     installed = []
     for mid in MODELS:
@@ -115,46 +145,86 @@ async def generate_handler(request):
         max_new_tokens = max(256, min(1500, max_new_tokens))
 
         inputs = processor(text=[prompt], padding=True, return_tensors="pt")
-        for k, v in inputs.items():
-            if hasattr(v, "to"):
-                try:
-                    inputs[k] = v.to(DEVICE)
-                except Exception:
-                    pass
 
-        print(f"[music] generating '{prompt}' {duration}s with {model_id} tokens={max_new_tokens}", flush=True)
+        # apparaat waar het model écht op staat (de .to(DEVICE) bij laden kan
+        # stil zijn teruggevallen op cpu) — inputs daarheen, anders krijg je
+        # een device-mismatch en faalt elke generatie.
+        try:
+            gen_device = str(next(model.parameters()).device)
+        except StopIteration:
+            gen_device = "cpu"
+
+        print(f"[music] generating '{prompt}' {duration}s with {model_id} tokens={max_new_tokens} on {gen_device}", flush=True)
         criteria = ProgressCriteria(max_new_tokens, 25, 70)
 
-        def _run_generate():
+        def _run_generate(device, crit):
             # in een thread: anders blokkeert de generatie de event loop en kan
             # /progress niet worden gepolld (de balk bleef op 10% hangen)
+            if device == "cpu":
+                try:
+                    model.to("cpu")
+                except Exception as e:
+                    print(f"[music] move to cpu failed: {e}", flush=True)
+                try:
+                    if torch.backends.mps.is_available():
+                        torch.mps.empty_cache()
+                except Exception:
+                    pass
+            loc_inputs = {}
+            for k, v in inputs.items():
+                try:
+                    loc_inputs[k] = v.to(device) if hasattr(v, "to") else v
+                except Exception:
+                    loc_inputs[k] = v
             with torch.no_grad():
                 return model.generate(
-                    **inputs,
+                    **loc_inputs,
                     max_new_tokens=max_new_tokens,
                     do_sample=True,
                     temperature=0.9,
                     guidance_scale=3.0,
-                    stopping_criteria=StoppingCriteriaList([criteria]),
+                    stopping_criteria=StoppingCriteriaList([crit]),
                 )
 
-        audio_values = await asyncio.to_thread(_run_generate)
+        def _decode(values):
+            sampling_rate = model.config.audio_encoder.sampling_rate if hasattr(model.config, "audio_encoder") else 32000
+            wav = values[0, 0].cpu().float().numpy()
+            wav = normalize_audio(wav, target_peak=0.95)
+            wav = np.clip(wav, -1.0, 1.0)
+            return wav, sampling_rate
+
+        audio_values = await asyncio.to_thread(_run_generate, gen_device, criteria)
+
+        wav, sampling_rate = _decode(audio_values)
+        rms, zcr = audio_quality(wav, sampling_rate)
+        duration_actual = len(wav) / sampling_rate
+        print(f"[music] done: {duration_actual:.1f}s, rms={rms:.3f} zcr={zcr:.3f}", flush=True)
+
+        if looks_like_noise(rms, zcr) and gen_device != "cpu":
+            # Bekend MPS-probleem: het model geeft alleen witte ruis terug.
+            # Eén keer opnieuw op CPU (traag maar correct) i.p.v. ruis op de timeline zetten.
+            print(f"[music] output looks like noise on {gen_device}, retrying on cpu…", flush=True)
+            set_progress(30, "generating", "Alleen ruis gedetecteerd — opnieuw op CPU…")
+            criteria = ProgressCriteria(max_new_tokens, 30, 62)
+            audio_values = await asyncio.to_thread(_run_generate, "cpu", criteria)
+            wav, sampling_rate = _decode(audio_values)
+            rms, zcr = audio_quality(wav, sampling_rate)
+            duration_actual = len(wav) / sampling_rate
+            print(f"[music] cpu retry: {duration_actual:.1f}s, rms={rms:.3f} zcr={zcr:.3f}", flush=True)
+
+        if looks_like_noise(rms, zcr):
+            msg = "MusicGen leverde alleen ruis op (ook op CPU). Probeer een ander model of gebruik de synth-beat."
+            print(f"[music] giving up: {msg}", flush=True)
+            set_progress(0, "error", msg[:200])
+            return web.json_response({"ok": False, "error": msg}, status=500)
+
         set_progress(97, "encoding", "Audio encoderen…", criteria.step, criteria.total)
 
-        sampling_rate = model.config.audio_encoder.sampling_rate if hasattr(model.config, "audio_encoder") else 32000
-        wav = audio_values[0, 0].cpu().float().numpy()
-
-        wav = normalize_audio(wav, target_peak=0.95)
-        wav = np.clip(wav, -1.0, 1.0)
         wav_int16 = (wav * 32767).astype(np.int16)
 
         buf = io.BytesIO()
         scipy.io.wavfile.write(buf, sampling_rate, wav_int16)
         b64 = base64.b64encode(buf.getvalue()).decode()
-
-        duration_actual = len(wav) / sampling_rate
-        rms = float(np.sqrt(np.mean(wav ** 2)))
-        print(f"[music] done: {duration_actual:.1f}s, rms={rms:.3f}", flush=True)
 
         set_progress(100, "done", f"Klaar: {duration_actual:.1f}s audio", criteria.step, criteria.total)
         return web.json_response({

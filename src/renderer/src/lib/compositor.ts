@@ -137,6 +137,9 @@ export function clipAudioGain(clip: Clip, time: number): number {
   return clipAlpha(clip, time)
 }
 
+// Vignette-gradient cache (per W×H×sterkte): één gradient hergebruiken i.p.v.
+// per clip per frame een nieuwe bouwen.
+let vigCache: { key: string; grad: CanvasGradient | null } = { key: '', grad: null }
 /** Korreltegels: klein, van tevoren gemaakt, per frame een andere. */
 const grainTiles: Array<CanvasRenderingContext2D | null> = []
 function grainTile(i: number): CanvasRenderingContext2D | null {
@@ -213,9 +216,14 @@ function drawVideo(
   }
   const zm = fx.zoom ?? 0
   if (zm > 0) drawScale *= zoomFactor(zm, fx.zoomSpeed ?? 0.5, local)
+  // vignette-gradient cachen: createRadialGradient per clip per frame is duur
+  const vgKey = `${W}x${H}x${Math.round((fx.vignette ?? 0) * 20)}`
   ctx.save()
   ctx.globalAlpha = Math.max(0, Math.min(1, alpha))
-  ctx.filter = filterString(fx)
+  // filter alleen zetten als er echt iets aan staat — zelfs een lege string
+  // dwingt een filter-evaluatie af op elke frame
+  const filter = filterString(fx)
+  if (filter) ctx.filter = filter
   if (drawScale !== 1 || sdx !== 0 || sdy !== 0 || sx !== 1 || sy !== 1) {
     const cx = W / 2
     const cy = H / 2
@@ -226,7 +234,7 @@ function drawVideo(
   } else {
     ctx.drawImage(el, baseDx, baseDy, dw, dh)
   }
-  ctx.filter = 'none'
+  if (filter) ctx.filter = 'none'
   // witte flits en flikker als overlay ná het beeld, vóór wat er bovenop ligt
   const fl = flashAlpha(fx.flash ?? 0, fx.flashRate ?? 2, local)
   if (fl > 0.003) {
@@ -253,9 +261,15 @@ function drawVideo(
   }
   if ((fx.vignette ?? 0) > 0) {
     const v = Math.min(1, fx.vignette ?? 0)
-    const grad = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75)
-    grad.addColorStop(0, 'rgba(0,0,0,0)')
-    grad.addColorStop(1, `rgba(0,0,0,${(0.55 * v).toFixed(3)})`)
+    let grad: CanvasGradient | null = null
+    if (vigCache.key === vgKey && vigCache.grad) {
+      grad = vigCache.grad
+    } else {
+      grad = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75)
+      grad.addColorStop(0, 'rgba(0,0,0,0)')
+      grad.addColorStop(1, `rgba(0,0,0,${(0.55 * v).toFixed(3)})`)
+      vigCache = { key: vgKey, grad }
+    }
     ctx.fillStyle = grad
     ctx.fillRect(0, 0, W, H)
   }
@@ -355,6 +369,19 @@ const OUT_NEUTRAL = { dx: 0, dy: 0, scale: 1, alpha: 1, blur: 0, rot: 0, chars: 
 
 // The pretty renderer. The export is the stubborn one; this file is the reason
 // karaoke works at all, and ffmpeg is the reason it took 2 months.
+// Gedeelde meet-context voor hit-tests: een nieuw canvas per hit-test (die
+// loopt per pointermove) is pure allocatie-verspilling.
+let sharedBoundsCtx: CanvasRenderingContext2D | null | undefined
+function getBoundsCtx(): CanvasRenderingContext2D | null {
+  if (sharedBoundsCtx !== undefined) return sharedBoundsCtx
+  try {
+    sharedBoundsCtx = document.createElement('canvas').getContext('2d')
+  } catch {
+    sharedBoundsCtx = null
+  }
+  return sharedBoundsCtx
+}
+
 /**
  * Omhullende rechthoek van een tekstclip op dit tijdstip, in canvas-pixels.
  * Zelfde layoutberekening als `drawText`, zodat een hit-test exact klopt met
@@ -395,7 +422,7 @@ export function textClipBounds(
   const anchorY = Math.round(t.y * H + (animIn.dy + animOut.dy) * scale)
 
   // Breedte meten met dezelfde font-context als bij tekenen
-  const m = document.createElement('canvas').getContext('2d')
+  const m = getBoundsCtx()
   if (!m) return null
   const italic = t.italic ? 'italic ' : ''
   m.font = `${italic}${t.fontWeight ?? 700} ${pxNum.toFixed(1)}px "${t.fontFamily || 'sans-serif'}", sans-serif`
@@ -789,29 +816,38 @@ export function renderFrame(ctx: CanvasRenderingContext2D, o: RenderOpts): void 
 
   // Zoek eerst of er überhaupt iets te tonen is en of het al decodable is.
   // Als alles nog aan het seeken is, wis niet naar zwart maar behoud vorige frame (voorkomt zwart flikkeren bij snel scrubben).
+  //
+  // Eén keer groeperen i.p.v. drie keer per frame over alle clips filteren.
   const videoTracks = state.tracks.filter((t) => t.kind === 'video' && !t.hidden)
-  let hasReady = false
-  for (const track of videoTracks) {
-    for (const clip of state.clips.filter((c) => c.trackId === track.id && (c.kind === 'video' || c.kind === 'text'))) {
-      if (time < clip.start || time >= clip.start + clip.duration) continue
-      if (clip.kind === 'text') { hasReady = true; break }
-      const asset = state.assets.find((a) => a.id === clip.assetId)
-      if (!asset) continue
-      const el = players.element(clip.id, asset, clip.kind)
-      if (el instanceof HTMLImageElement) { if (el.complete && (el as HTMLImageElement).naturalWidth > 0) { hasReady = true; break } }
-      else if (el instanceof HTMLMediaElement) { if (!el.error && el.readyState >= 2 && !el.seeking) { hasReady = true; break } else if (el.readyState >= 1) { hasReady = true; break } }
+  const visibleIds = new Set(videoTracks.map((t) => t.id))
+  const byTrack = new Map<string, Clip[]>()
+  for (const c of state.clips) {
+    if ((c.kind !== 'video' && c.kind !== 'text') || !visibleIds.has(c.trackId)) continue
+    if (time < c.start || time >= c.start + c.duration) continue
+    let arr = byTrack.get(c.trackId)
+    if (!arr) {
+      arr = []
+      byTrack.set(c.trackId, arr)
     }
-    if (hasReady) break
+    arr.push(c)
   }
   // Heeft er überhaupt een clip op dit tijdstip (ook als hij nog niet ready is)?
-  const hasClipAtTime = (() => {
-    for (const track of videoTracks) {
-      for (const clip of state.clips.filter((c) => c.trackId === track.id && (c.kind === 'video' || c.kind === 'text'))) {
-        if (time >= clip.start && time < clip.start + clip.duration) return true
+  const hasClipAtTime = byTrack.size > 0
+  const assetMap = new Map(state.assets.map((a) => [a.id, a]))
+  let hasReady = false
+  if (hasClipAtTime) {
+    for (const clips of byTrack.values()) {
+      for (const clip of clips) {
+        if (clip.kind === 'text') { hasReady = true; break }
+        const asset = assetMap.get(clip.assetId)
+        if (!asset) continue
+        const el = players.element(clip.id, asset, clip.kind)
+        if (el instanceof HTMLImageElement) { if (el.complete && (el as HTMLImageElement).naturalWidth > 0) { hasReady = true; break } }
+        else if (el instanceof HTMLMediaElement) { if (!el.error && el.readyState >= 2 && !el.seeking) { hasReady = true; break } else if (el.readyState >= 1) { hasReady = true; break } }
       }
+      if (hasReady) break
     }
-    return false
-  })()
+  }
   // Clip aanwezig maar nog niet decodable (seeking/buffering) → behoud vorige frame, niet naar zwart
   if (hasClipAtTime && !hasReady) return
   // Geen clip op dit tijdstip (gap) → wel naar zwart (intentioneel)
@@ -822,9 +858,9 @@ export function renderFrame(ctx: CanvasRenderingContext2D, o: RenderOpts): void 
   ctx.fillStyle = '#000'
   ctx.fillRect(0, 0, width, height)
   for (const track of videoTracks) {
-    const clips = state.clips
-      .filter((c) => c.trackId === track.id && (c.kind === 'video' || c.kind === 'text'))
-      .sort((a, b) => a.start - b.start)
+    const clips = byTrack.get(track.id)
+    if (!clips) continue
+    clips.sort((a, b) => a.start - b.start)
     for (const clip of clips) {
       if (time < clip.start || time >= clip.start + clip.duration) continue
       const { dx: tx, dy: ty, scale: ts } = clipTransitionXform(clip, time)
@@ -834,7 +870,7 @@ export function renderFrame(ctx: CanvasRenderingContext2D, o: RenderOpts): void 
         drawText(ctx, clip, width, height, alpha, time, tx, ty, ts, clip.id === state.selectedClipId)
         continue
       }
-      const asset = state.assets.find((a) => a.id === clip.assetId)
+      const asset = assetMap.get(clip.assetId)
       if (!asset) continue
       const el = players.element(clip.id, asset, clip.kind)
       if (el instanceof HTMLMediaElement) {

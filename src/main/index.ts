@@ -604,7 +604,9 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
-  comfy.stopComfyUI()
-  musicAi.stopMusicAI()
+  // force-varianten: killen ook zombies van eerdere sessies via de poort,
+  // zodat er na afsluiten echt niets meer draait
+  comfy.forceStopComfyUI()
+  musicAi.forceStopMusicAI()
   ai.stopOllama()
 })

@@ -47,7 +47,6 @@ export default function MediaPanel(): JSX.Element {
   const [extractingId, setExtractingId] = useState<string | null>(null)
   const [extractMsg, setExtractMsg] = useState<{ id: string; msg: string } | null>(null)
   const assets = useEditorStore((s) => s.assets)
-  const playhead = useEditorStore((s) => s.playhead)
   const addClip = useEditorStore((s) => s.addClip)
   const removeAsset = useEditorStore((s) => s.removeAsset)
   const selectedClipId = useEditorStore((s) => s.selectedClipId)
@@ -66,10 +65,11 @@ export default function MediaPanel(): JSX.Element {
     const s = useEditorStore.getState()
     const asset = s.assets.find((a) => a.id === assetId)
     // audio → alleen audio-track; video → alleen video-track (addClip maakt track aan als die ontbreekt)
+    // playhead via getState: een abonnement hier zou de hele bibliotheek 60x/s her-renderen tijdens afspelen
     const want = asset?.type === 'audio' ? 'audio' : 'video'
     const track = s.tracks.find((t) => t.kind === want)
-    if (track) addClip(assetId, track.id, playhead)
-    else addClip(assetId, '', playhead)
+    if (track) addClip(assetId, track.id, s.playhead)
+    else addClip(assetId, '', s.playhead)
   }
 
   const applyPreset = (fx: Partial<ClipEffects>): void => {

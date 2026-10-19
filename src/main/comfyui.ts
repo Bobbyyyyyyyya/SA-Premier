@@ -196,9 +196,21 @@ export function ensureComfyUI(): void {
 
 export function stopComfyUI(): void {
   if (server) {
-    server.kill()
+    try { server.kill() } catch { /* ignore */ }
     server = null
   }
+}
+
+/**
+ * Harde stop bij afsluiten: eigen child én alles wat nog op de poort
+ * luistert. Nodig omdat de server detached + unref'd start — zombies uit
+ * eerdere sessies staan niet meer in `server` en overleefden `stopComfyUI`.
+ */
+export function forceStopComfyUI(): void {
+  stopComfyUI()
+  try {
+    execSync(`lsof -ti :${PORT} | xargs kill -9 2>/dev/null`, { stdio: 'ignore' })
+  } catch { /* niets meer op de poort */ }
 }
 
 export async function listCheckpoints(): Promise<InstalledModel[]> {

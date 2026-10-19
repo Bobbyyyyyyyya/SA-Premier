@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useEditorStore, selectTotal } from '../store'
+import { useEditorStore } from '../store'
 import { clamp, formatTime } from '../lib/format'
 import { importPaths } from '../lib/inspect'
 import { mediaUrl } from '../lib/mediaUrl'
@@ -66,10 +66,17 @@ function hashStr(s: string): number {
 
 /* ---------------- waveform / filmstrip ---------------- */
 
+// peaks-cache over clips heen: dezelfde audio opnieuw decoden bij elke
+// re-render (zoom, scroll, trim) was pure verspilling
+const peaksCache = new Map<string, number[]>()
+const peaksKey = (assetPath: string, duration: number, sourceStart: number): string =>
+  `${assetPath}|${duration.toFixed(2)}|${sourceStart.toFixed(2)}`
+
 function Waveform({ assetPath, seed, duration, sourceStart, pps, muted }: { assetPath?: string; seed: string; duration: number; sourceStart: number; pps: number; muted?: boolean }): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const peaksRef = useRef<number[] | null>(null)
   const drawRef = useRef<() => void>(() => undefined)
+  const roRaf = useRef(0)
 
   // teken op de WERKELIJKE clip-maat — canvas vult de hele clip, gevulde spiegel-golf (geen dunne lijn)
   const drawBars = (peaks: number[]): void => {
@@ -165,9 +172,16 @@ function Waveform({ assetPath, seed, duration, sourceStart, pps, muted }: { asse
     drawRef.current()
     const el = canvasRef.current
     if (!el || typeof ResizeObserver === 'undefined') return
-    const ro = new ResizeObserver(() => drawRef.current())
+    // resize-throttle via rAF: zoomen vuurt tientallen resizes per seconde af
+    const ro = new ResizeObserver(() => {
+      cancelAnimationFrame(roRaf.current)
+      roRaf.current = requestAnimationFrame(() => drawRef.current())
+    })
     ro.observe(el)
-    return () => ro.disconnect()
+    return () => {
+      ro.disconnect()
+      cancelAnimationFrame(roRaf.current)
+    }
   }, [pps, duration, seed])
 
   useEffect(() => {
@@ -188,8 +202,18 @@ function Waveform({ assetPath, seed, duration, sourceStart, pps, muted }: { asse
       })
     }
 
+    const key = peaksKey(assetPath, duration, sourceStart)
+    const cached = peaksCache.get(key)
+    if (cached) {
+      peaksRef.current = cached
+      drawRef.current()
+      return () => { cancelled = true }
+    }
+
     const finish = (peaks: number[]): void => {
       if (cancelled) return
+      if (peaksCache.size > 200) peaksCache.clear()
+      peaksCache.set(key, peaks)
       peaksRef.current = peaks
       drawRef.current()
     }
@@ -198,6 +222,11 @@ function Waveform({ assetPath, seed, duration, sourceStart, pps, muted }: { asse
     // bestand). decodeAudioData over een lange video duurt seconden en faalt op
     // AAC/M4A sowieso — die tijd was dus vaak verspild.
     const decodeLocal = (): void => {
+      // lange bestanden nooit volledig fetchen + decoden voor een golfvorm
+      if (duration > 120) {
+        finish(fallbackPeaks())
+        return
+      }
       const url = mediaUrl(assetPath)
       fetch(url)
         .then((r) => r.arrayBuffer())
@@ -261,43 +290,16 @@ function Waveform({ assetPath, seed, duration, sourceStart, pps, muted }: { asse
 }
 
 function Filmstrip({ assetPath, thumbnail, isImage }: { assetPath?: string; thumbnail?: string; isImage?: boolean }): JSX.Element {
-  const [genThumb, setGenThumb] = useState<string | null>(null)
-  useEffect(() => {
-    if (isImage || thumbnail || !assetPath) return
-    let cancelled = false
-    const v = document.createElement('video')
-    v.muted = true
-    v.preload = 'auto'
-    v.crossOrigin = 'anonymous'
-    const onMeta = (): void => {
-      try { v.currentTime = Math.min(0.6, v.duration * 0.15 || 0.6) } catch { /* noop */ }
-    }
-    const onSeek = (): void => {
-      try {
-        const c = document.createElement('canvas')
-        c.width = 320
-        c.height = Math.max(90, Math.round(320 * (v.videoHeight / Math.max(1, v.videoWidth))) || 180)
-        const ctx = c.getContext('2d')
-        if (ctx) {
-          ctx.drawImage(v, 0, 0, c.width, c.height)
-          if (!cancelled) setGenThumb(c.toDataURL('image/jpeg', 0.75))
-        }
-      } catch { /* ignore */ }
-    }
-    v.addEventListener('loadedmetadata', onMeta, { once: true })
-    v.addEventListener('seeked', onSeek, { once: true })
-    v.addEventListener('error', () => { if (!cancelled) setGenThumb(null) }, { once: true })
-    v.src = mediaUrl(assetPath)
-    return () => { cancelled = true; try { v.pause(); v.removeAttribute('src'); v.load() } catch { /* noop */ } }
-  }, [assetPath, thumbnail, isImage])
-
+  // Bewust géén eigen <video>-decode meer per clip: elke clip startte een
+  // volledige videodecode + seek + canvas-toDataURL op, wat bij tientallen
+  // clips het systeem sloopte. Import maakt al thumbnails; zonder thumbnail
+  // tonen we een goedkope placeholder.
   if (isImage && assetPath) {
     return <div className="clip-film single"><span style={{ backgroundImage: `url(${mediaUrl(assetPath)})` }} /></div>
   }
-  const src = thumbnail ?? genThumb
-  if (src) {
+  if (thumbnail) {
     // frame herhalen over hele breedte → echte filmstrip, niet één dun plaatje
-    return <div className="clip-film strip"><span style={{ backgroundImage: `url(${src})` }} /></div>
+    return <div className="clip-film strip"><span style={{ backgroundImage: `url(${thumbnail})` }} /></div>
   }
   return <div className="clip-film placeholder"><span /></div>
 }
@@ -515,16 +517,18 @@ function Ruler({
   const [hoverX, setHoverX] = useState(0)
   const scrubbing = useRef(false)
 
-  const step = pps >= 80 ? 1 : pps >= 36 ? 2 : pps >= 16 ? 5 : 10
+  // tick-aantallen cappen: bij een lang project maakte dit duizenden divs
+  let step = pps >= 80 ? 1 : pps >= 36 ? 2 : pps >= 16 ? 5 : 10
+  while ((total + step * 2) / step > 160) step *= 2
   const minorStep = step >= 5 ? 1 : step / 5
   const majors: number[] = []
   for (let t = 0; t <= total + step * 2; t += step) majors.push(Math.round(t * 100) / 100)
   const minors: number[] = []
-  if (pps > 14) {
+  if (pps > 14 && (total + step * 2) / minorStep < 600) {
+    const majorSet = new Set(majors)
     for (let t = 0; t <= total + step * 2; t += minorStep) {
       const r = Math.round(t * 100) / 100
-      if (majors.some((m) => Math.abs(m - r) < 1e-6)) continue
-      minors.push(r)
+      if (!majorSet.has(r)) minors.push(r)
     }
   }
 
@@ -730,9 +734,10 @@ function TrackRow({
     })
   }
 
-  // seconde-grid als achtergrond
+  // seconde-grid als achtergrond — gecapt, anders honderden divs per track
   const gridLines = useMemo(() => {
-    const step = pps >= 80 ? 1 : pps >= 36 ? 2 : pps >= 16 ? 5 : 10
+    let step = pps >= 80 ? 1 : pps >= 36 ? 2 : pps >= 16 ? 5 : 10
+    while ((total + step * 2) / step > 200) step *= 2
     const arr: number[] = []
     for (let t = 0; t <= total + step * 2; t += step) arr.push(t)
     return arr
@@ -901,7 +906,8 @@ export default function Timeline(): JSX.Element {
   }, [follow])
 
   const pps = 60 * zoom
-  const total = useEditorStore(selectTotal)
+  // totaal alleen herberekenen als clips veranderen, niet bij elke playhead-tick
+  const total = useMemo(() => clips.reduce((m, c) => Math.max(m, c.start + c.duration), 0), [clips])
   const contentW = Math.max((total + 30) * pps, 900)
 
   const selectedClip = useMemo(() => clips.find((c) => c.id === selectedClipId) ?? null, [clips, selectedClipId])

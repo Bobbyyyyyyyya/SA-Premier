@@ -1416,40 +1416,58 @@ if (typeof window !== 'undefined') {
   } catch {
     // ignore
   }
-  useEditorStore.subscribe((s, prev) => {
-    if (s.playing) return
-    const p = prev as EditorState | undefined
-    if (p && s.project === p.project && s.assets === p.assets && s.clips === p.clips && s.tracks === p.tracks && s.playhead === p.playhead) return
-    const toSave: SavedProject = {
-      project: s.project,
-      assets: s.assets,
-      clips: s.clips,
-      tracks: s.tracks,
-      playhead: s.playhead
-    }
+  // Autosave is debounced: zonder dit schreef elke seek en elke drag-beweging
+  // het hele project (incl. base64-thumbnails) naar localStorage én IPC —
+  // dat is stringifyen van megabytes per pointermove en sloopte de app.
+  let saveTimer: ReturnType<typeof setTimeout> | null = null
+  let pendingSave: SavedProject | null = null
+  const flushSave = (): void => {
+    saveTimer = null
+    if (!pendingSave) return
+    const toSave = pendingSave
+    pendingSave = null
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave))
     } catch {
       // quota exceeded
     }
     try {
-      // @ts-ignore file persistence - immediate so app close doesn't lose data
+      // @ts-ignore file persistence
       window.api?.projectSave?.(toSave)
     } catch {
       // ignore
     }
+  }
+  useEditorStore.subscribe((s, prev) => {
+    if (s.playing) return
+    const p = prev as EditorState | undefined
+    if (p && s.project === p.project && s.assets === p.assets && s.clips === p.clips && s.tracks === p.tracks && s.playhead === p.playhead) return
+    pendingSave = {
+      project: s.project,
+      assets: s.assets,
+      clips: s.clips,
+      tracks: s.tracks,
+      playhead: s.playhead
+    }
+    if (saveTimer) return
+    saveTimer = setTimeout(flushSave, 1000)
   })
   // also flush on page unload
   window.addEventListener('beforeunload', () => {
+    if (saveTimer) {
+      clearTimeout(saveTimer)
+      saveTimer = null
+    }
     try {
       const s = useEditorStore.getState()
-      const toSave: SavedProject = {
+      const toSave: SavedProject = pendingSave ?? {
         project: s.project,
         assets: s.assets,
         clips: s.clips,
         tracks: s.tracks,
         playhead: s.playhead
       }
+      pendingSave = null
       // @ts-ignore
       window.api?.projectSave?.(toSave)
     } catch {

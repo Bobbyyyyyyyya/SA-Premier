@@ -74,9 +74,6 @@ export default function HomeScreen({ onOpen }: { onOpen: () => void }): JSX.Elem
   return (
     <div className="home">
       <div className="home-hero">
-        <div className="home-hero-glow home-hero-glow--1" />
-        <div className="home-hero-glow home-hero-glow--2" />
-        <div className="home-hero-grid" />
         <div className="home-hero-inner">
           <div className="home-hero-left">
             <div className="home-brand-row">
