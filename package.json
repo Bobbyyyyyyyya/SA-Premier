@@ -1,7 +1,7 @@
 {
   "name": "sa-premier",
   "productName": "SA Premier",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A CapCut / DaVinci Resolve style video editor built with Electron, React and TypeScript",
   "main": "./out/main/index.js",
   "author": "SA Premier <noreply@users.noreply.github.com>",
