@@ -35,16 +35,13 @@ jobs:
 
       - run: npm run build
 
-      - if: runner.os == 'Windows'
+      - if: runner.os != 'Linux'
         shell: bash
         run: |
-          npx electron-builder --config electron-builder.yml --win --publish never
-          echo "${GITHUB_TOKEN}" | gh auth login --with-token
-          gh release upload "${GITHUB_REF_NAME}" dist/*.exe dist/*.exe.blockmap --clobber --repo "${GITHUB_REPOSITORY}"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          npx electron-builder --config electron-builder.yml --${{ matrix.platform }} --publish never
+          gh release upload "${GITHUB_REF_NAME}" dist/* --clobber --repo "${GITHUB_REPOSITORY}"
 
-      - if: runner.os != 'Windows'
+      - if: runner.os == 'Linux'
         run: npx electron-builder --config electron-builder.yml --${{ matrix.platform }} --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
