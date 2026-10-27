@@ -39,7 +39,7 @@ jobs:
         shell: bash
         run: |
           npx electron-builder --config electron-builder.yml --${{ matrix.platform }} --publish never
-          gh release upload "${GITHUB_REF_NAME}" dist/* --clobber --repo "${GITHUB_REPOSITORY}"
+          gh release upload "${GITHUB_REF_NAME}" dist/*.* < /dev/null --clobber --repo "${GITHUB_REPOSITORY}"
 
       - if: runner.os == 'Linux'
         run: npx electron-builder --config electron-builder.yml --${{ matrix.platform }} --publish always
