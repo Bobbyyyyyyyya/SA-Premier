@@ -374,6 +374,9 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
     }
   }
 
+  // map-target voor video: blijft '[vout]', tenzij tekstclips de keten verlengen
+  // en eindigen op '[vout2]'. cmd.map() moet exact dit label gebruiken.
+  let videoOutLabel = 'vout'
   // bij 'alleen audio' geen videoketen: geen [vout], geen tekst-overlays
   if (mode !== 'audio') {
   const videoTracks = tracks.filter(
@@ -583,6 +586,8 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
         prev = `[${outLbl}]`
       }
     })
+    // de vlakke keten eindigt op de laatste tekstclip-uitgang (of '[vout]')
+    if (textClips.length) videoOutLabel = 'vout2'
   }
   }
 
@@ -623,7 +628,7 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
     }
   }
   cmd.output(outPath)
-  if (mode !== 'audio') cmd.map('[vout]')
+  if (mode !== 'audio') cmd.map(`[${videoOutLabel}]`)
   if (hasAudio) cmd.map('[aout]')
 
   return { cmd, total }
