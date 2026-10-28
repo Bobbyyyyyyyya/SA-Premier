@@ -28,20 +28,27 @@ const sanitizeDrawtextText = sanitizeCaptionText
 
 function findFfmpegBin(): string | null {
   try {
-    // In packaged app kan de binary in app.asar.unpacked of extraResources/bin staan
+    // In packaged app kan de binary in extraResources/bin of app.asar.unpacked staan.
+    // Belangrijk: spawn() kan NIET in een app.asar — dus altijd naar .asar.unpacked herschrijven.
+    const res = (process as unknown as { resourcesPath?: string }).resourcesPath
     const candidates: (string | null | undefined)[] = [
-      ffmpegPath as unknown as string | null,
-      (process as unknown as { resourcesPath?: string }).resourcesPath
-        ? (process as unknown as { resourcesPath?: string }).resourcesPath + '/bin/ffmpeg'
-        : null
+      res ? res + '/bin/ffmpeg' : null,
+      typeof ffmpegPath === 'string' && ffmpegPath.includes('app.asar/')
+        ? ffmpegPath.replace('app.asar/', 'app.asar.unpacked/')
+        : ffmpegPath
     ]
     for (const c of candidates) {
       if (c && fs.existsSync(c)) return c
     }
+    // Laatste redmiddel: ffmpeg-static in asar.unpacked handmatig vinden.
+    if (res) {
+      const guess = res + '/app.asar.unpacked/node_modules/ffmpeg-static/ffmpeg'
+      if (fs.existsSync(guess)) return guess
+    }
   } catch {
     // ignore
   }
-  return (ffmpegPath as unknown as string) || null
+  return null
 }
 
 const BOLD_FAMILIES = /black|bold|impact/i
