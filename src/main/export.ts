@@ -603,6 +603,13 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
     }
   }
 
+  // BT.709-conversie als laatste stap ín de complex filtergraph: -vf mag niet
+  // naast -filter_complex op dezelfde stream worden gebruikt.
+  if (mode !== 'audio') {
+    graph.push(`[${videoOutLabel}]scale=out_color_matrix=bt709,format=yuv420p[ffv]`)
+    videoOutLabel = 'ffv'
+  }
+
   const cmd = ffmpeg()
   for (const p of inputPaths) {
     cmd.input(p)
@@ -613,12 +620,13 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
     // sRGB → BT.709: zonder dit gebruikt swscale de BT.601-matrix voor de
     // RGB→YUV-conversie, terwijl HD-players het resultaat als BT.709 lezen.
     // Zelfde tekstkleur, maar in de export zichtbaar dof/verschoven.
+    // BT.709-tagging zodat spelers de matrix wissen zoals we converteren.
+    // (de RGB→YUV-conversie zelf gebeurt in de filtergraph via scale=out_color_matrix=bt709)
     cmd.outputOptions([
       '-c:v', 'libx264',
       '-pix_fmt', 'yuv420p',
       '-preset', 'medium',
       '-movflags', '+faststart',
-      '-vf', 'scale=out_color_matrix=bt709',
       '-colorspace', 'bt709',
       '-color_primaries', 'bt709',
       '-color_trc', 'bt709'
