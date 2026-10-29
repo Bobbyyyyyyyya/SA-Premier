@@ -610,11 +610,18 @@ function buildCommand(req: ExportRequest): { cmd: ffmpeg.FfmpegCommand; total: n
   }
   cmd.complexFilter(graph)
   if (mode !== 'audio') {
+    // sRGB → BT.709: zonder dit gebruikt swscale de BT.601-matrix voor de
+    // RGB→YUV-conversie, terwijl HD-players het resultaat als BT.709 lezen.
+    // Zelfde tekstkleur, maar in de export zichtbaar dof/verschoven.
     cmd.outputOptions([
       '-c:v', 'libx264',
       '-pix_fmt', 'yuv420p',
       '-preset', 'medium',
-      '-movflags', '+faststart'
+      '-movflags', '+faststart',
+      '-vf', 'scale=out_color_matrix=bt709',
+      '-colorspace', 'bt709',
+      '-color_primaries', 'bt709',
+      '-color_trc', 'bt709'
     ])
   }
   if (hasAudio) {
