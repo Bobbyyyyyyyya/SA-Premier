@@ -54,3 +54,62 @@ export function venvPython(dir: string): string | null {
   }
   return null
 }
+
+let pythonCache: string | null | undefined
+
+function tryRun(bin: string, args: string[]): Promise<number | null> {
+  return new Promise((resolve) => {
+    let settled = false
+    const done = (code: number | null): void => {
+      if (settled) return
+      settled = true
+      resolve(code)
+    }
+    try {
+      const child = spawn(bin, args, { stdio: 'ignore' })
+      const t = setTimeout(() => {
+        try { child.kill('SIGKILL') } catch { /* ignore */ }
+        done(null)
+      }, 10000)
+      child.on('error', () => {
+        clearTimeout(t)
+        done(null)
+      })
+      child.on('exit', (code) => {
+        clearTimeout(t)
+        done(code)
+      })
+    } catch {
+      done(null)
+    }
+  })
+}
+
+/**
+ * Werkende Python-interpreter vinden. Belangrijk op Windows: het systeem heeft
+ * vaak een "python.exe" stub (Microsoft Store) die exit 9009 geeft in plaats
+ * van Python te starten. Daarom kandidaten echt even draaien en de uitkomst
+ * cachen. Een venv naast de bekende AI-mappen gaat voor.
+ */
+export async function findPython(): Promise<string | null> {
+  if (pythonCache !== undefined) return pythonCache
+  const { comfyBaseDir } = await import('./ai-setup')
+  const os = await import('node:os')
+  const path = await import('node:path')
+  const cands = [
+    venvPython(comfyBaseDir()),
+    venvPython(path.join(os.homedir(), 'MusicAI')),
+    'python3',
+    'python'
+  ]
+  for (const c of cands) {
+    if (!c) continue
+    const code = await tryRun(c, ['-c', 'import sys; assert sys.version_info >= (3, 9)'])
+    if (code === 0) {
+      pythonCache = c
+      return c
+    }
+  }
+  pythonCache = null
+  return null
+}

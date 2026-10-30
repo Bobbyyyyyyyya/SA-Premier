@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import type { CatalogModel, InstallProgress, InstalledModel } from '../shared/types'
 import { comfyBaseDir } from './ai-setup'
-import { pythonDepsOk, venvPython } from './py-deps'
+import { findPython, pythonDepsOk, venvPython } from './py-deps'
 
 const PORT = 8189
 const BASE = `http://127.0.0.1:${PORT}`
@@ -310,29 +310,75 @@ export function listMusicModels(): InstalledModel[] {
 export async function installMusicModel(catalog: CatalogModel, onProgress: (p: InstallProgress) => void): Promise<InstallProgress> {
   const prog: InstallProgress = { id: catalog.id, phase: 'downloading', percent: 0, totalMb: catalog.sizeMb }
   onProgress(prog)
-  // trigger download via python huggingface_hub
-  const bin = pythonBin()
+  // Werkende python vinden — op Windows geeft de Store-stub van python.exe
+  // anders exit 9009 en blijft de gebruiker met een cryptische fout zitten.
+  const bin = await findPython()
+  if (!bin) {
+    const p: InstallProgress = {
+      id: catalog.id,
+      phase: 'error',
+      message: 'Python 3 niet gevonden. Installeer Python 3.10+ van python.org (vink "Add python.exe to PATH" aan) en herstart de app.'
+    }
+    onProgress(p)
+    return p
+  }
+  // huggingface_hub moet in deze interpreter zitten; ontbreekt het, dan één
+  // keer via pip installeren (user-site, geen venv nodig).
+  const hubOk = await pythonDepsOk(bin, 'import huggingface_hub')
+  if (!hubOk) {
+    onProgress({ id: catalog.id, phase: 'downloading', percent: 2, totalMb: catalog.sizeMb })
+    await new Promise<void>((resolve) => {
+      const pip = spawn(bin, ['-m', 'pip', 'install', '--user', '--quiet', 'huggingface_hub'], { stdio: 'ignore' })
+      pip.on('error', () => resolve())
+      pip.on('exit', () => resolve())
+      // pip kan traag zijn; cap op 5 min
+      const t = setTimeout(() => {
+        try { pip.kill() } catch { /* ignore */ }
+        resolve()
+      }, 300000)
+      pip.on('exit', () => clearTimeout(t))
+    })
+  }
+  if (!(await pythonDepsOk(bin, 'import huggingface_hub'))) {
+    const p: InstallProgress = {
+      id: catalog.id,
+      phase: 'error',
+      message: 'Kon de downloadbibliotheek (huggingface_hub) niet installeren. Installeer handmatig: python -m pip install huggingface_hub'
+    }
+    onProgress(p)
+    return p
+  }
+  // echte voortgang: snapshot_download + tqdm printen percentages op stderr
   const script = `
 from huggingface_hub import snapshot_download
 import sys
 mid=sys.argv[1]
-print("downloading", mid)
-snapshot_download(repo_id=mid)
-print("done")
+print("downloading", mid, flush=True)
+snapshot_download(repo_id=mid, max_workers=4)
+print("done", flush=True)
 `
   const tmp = path.join(os.tmpdir(), `dl-${catalog.id.replace('/', '_')}.py`)
   fs.writeFileSync(tmp, script)
-  const { spawn } = await import('node:child_process')
   const child = spawn(bin, [tmp, catalog.id], { stdio: ['ignore', 'pipe', 'pipe'] })
   let lastPct = 0
-  child.stdout?.on('data', (d) => {
-    // fake progress based on time
-    lastPct = Math.min(95, lastPct + 5)
-    onProgress({ id: catalog.id, phase: 'downloading', percent: lastPct, downloadedMb: Math.round((lastPct/100)*catalog.sizeMb), totalMb: catalog.sizeMb })
-  })
+  const push = (pct: number): void => {
+    if (pct > lastPct) {
+      lastPct = pct
+      onProgress({ id: catalog.id, phase: 'downloading', percent: pct, downloadedMb: Math.round((pct/100)*catalog.sizeMb), totalMb: catalog.sizeMb })
+    }
+  }
+  child.stdout?.on('data', () => push(Math.min(95, lastPct + 2)))
+  let stderrBuf = ''
   child.stderr?.on('data', (d) => {
-    lastPct = Math.min(95, lastPct + 3)
-    onProgress({ id: catalog.id, phase: 'downloading', percent: lastPct, downloadedMb: Math.round((lastPct/100)*catalog.sizeMb), totalMb: catalog.sizeMb })
+    // tqdm: "…:  45%|████▍ | 1.2G/2.5G …" → hoogste % pakken
+    stderrBuf = (stderrBuf + d.toString()).slice(-2000)
+    const matches = stderrBuf.match(/(\d{1,3})%/g)
+    if (matches) {
+      for (const m of matches) {
+        const pct = Math.min(95, Number(m.replace('%', '')))
+        if (pct > lastPct) push(pct)
+      }
+    }
   })
   const done = await new Promise<InstallProgress>((resolve) => {
     child.on('close', (code) => {
@@ -340,7 +386,13 @@ print("done")
         const p: InstallProgress = { id: catalog.id, phase: 'complete', percent: 100, totalMb: catalog.sizeMb }
         resolve(p)
       } else {
-        const p: InstallProgress = { id: catalog.id, phase: 'error', message: `Download failed code ${code}` }
+        const why =
+          code === 9009
+            ? 'Python is niet goed geïnstalleerd (Windows Store stub). Installeer Python 3.10+ van python.org en herstart de app.'
+            : code === 1 || code === 2
+              ? 'Download mislukt — check je internetverbinding en of er genoeg schijfruimte is.'
+              : `Download mislukt (code ${code})`
+        const p: InstallProgress = { id: catalog.id, phase: 'error', message: why }
         resolve(p)
       }
     })
