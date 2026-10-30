@@ -9,3 +9,4 @@ resources/models/
 resources/music-models/
 resources/comfy/
 !resources/README.md
+__pycache__/
