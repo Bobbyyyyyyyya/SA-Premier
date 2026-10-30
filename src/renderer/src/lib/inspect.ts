@@ -84,8 +84,9 @@ async function videoSnapshot(path: string): Promise<string | undefined> {
   })
 }
 
-export async function inspectMedia(paths: string[]): Promise<Asset[]> {
+export async function inspectMedia(paths: string[]): Promise<{ assets: Asset[]; skipped: string[] }> {
   const out: Asset[] = []
+  const skipped: string[] = []
   for (const p of paths) {
     try {
       if (IMAGE_EXT.test(p)) {
@@ -105,15 +106,23 @@ export async function inspectMedia(paths: string[]): Promise<Asset[]> {
         })
         continue
       }
-      const isAudio = AUDIO_EXT.test(p)
+      const extAudio = AUDIO_EXT.test(p)
       // Echte stream-detectie via ffmpeg: `videoEl.audioTracks` bestaat niet in
       // Chromium, dus anders zou elke video (ook zonder geluid) audio krijgen.
+      //_unknown extentie (bijv. .exe): ffmpeg probeert het bestand te decoderen —
+      // geen streamen → importeren over.
       let probe: Awaited<ReturnType<typeof window.api.probeMedia>> | null = null
       try {
         probe = await window.api.probeMedia(p)
       } catch {
         probe = null
       }
+      if (!extAudio && !(probe?.ok && (probe.hasVideo || probe.hasAudio))) {
+        skipped.push(basename(p))
+        continue
+      }
+      // geen bekende audio-extentie maar ffmpeg ziet alleen audio → alsnog audio
+      const isAudio = extAudio || !!(probe?.ok && !probe.hasVideo && probe.hasAudio)
       let duration: number | null = probe?.duration ?? null
       try {
         if (duration == null) duration = await window.api.getMediaDuration(p)
@@ -162,13 +171,22 @@ export async function inspectMedia(paths: string[]): Promise<Asset[]> {
       })
     } catch {
       // skip files that cannot be inspected
+      skipped.push(basename(p))
     }
   }
-  return out
+  return { assets: out, skipped }
 }
 
 export async function importPaths(paths: string[], opts?: { place?: boolean }): Promise<void> {
-  const assets = await inspectMedia(paths)
+  const { assets, skipped } = await inspectMedia(paths)
+  if (skipped.length) {
+    const n = skipped.length
+    window.alert(
+      n === 1
+        ? `${skipped[0]} is geen audio- of videobestand en is overgeslagen.`
+        : `${n} van ${paths.length} bestanden zijn geen audio of video en zijn overgeslagen.`
+    )
+  }
   if (!assets.length) return
   const s = useEditorStore.getState()
   s.addAssets(assets)

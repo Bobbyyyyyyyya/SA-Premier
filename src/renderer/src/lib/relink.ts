@@ -19,7 +19,7 @@ export async function checkMediaAccess(): Promise<void> {
 export async function relinkMedia(): Promise<{ relinked: number; added: number }> {
   const paths = await window.api.importMedia()
   if (!paths.length) return { relinked: 0, added: 0 }
-  const inspected = await inspectMedia(paths)
+  const inspected = (await inspectMedia(paths)).assets
   let relinked = 0
   let added = 0
   for (const asset of inspected) {

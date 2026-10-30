@@ -96,12 +96,7 @@ function registerIpc(): void {
   ipcMain.handle('import-media', async () => {
     const res = await dialog.showOpenDialog({
       properties: ['openFile', 'multiSelections'],
-      filters: [
-        {
-          name: 'Media',
-          extensions: ['mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v', 'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac', 'wma', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp']
-        }
-      ]
+      filters: [{ name: 'Alle bestanden', extensions: ['*'] }]
     })
     return res.canceled ? [] : res.filePaths
   })
