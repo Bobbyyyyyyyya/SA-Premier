@@ -88,13 +88,22 @@ export class PlayerManager {
 
   /** AudioContext pas aanmaken als er echt iets te horen valt te krijgen. */
   private ensureCtx(): AudioContext | null {
-    if (this.ctx) return this.ctx
+    if (this.ctx) {
+      // gesuspende context = eeuwige stilte voor alle geroute clips; altijd proberen
+      // te hervatten zodra er weer een aanleiding is (bijv. een user-gesture hier)
+      if (this.ctx.state === 'suspended') void this.ctx.resume().catch(() => null)
+      return this.ctx
+    }
     try {
       const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
       if (!Ctor) return null
       this.ctx = new Ctor()
       // browsers laten de context pas starten na een gebruikersgebaar
       void this.ctx.resume().catch(() => null)
+      // en als de browser hem daarna weer suspendeert (tab-wissel, apparaatwissel):
+      this.ctx.onstatechange = () => {
+        if (this.ctx && this.ctx.state === 'suspended') void this.ctx.resume().catch(() => null)
+      }
     } catch {
       this.ctx = null
     }
@@ -310,6 +319,11 @@ export class PlayerManager {
         }
       }
       if (el.paused) {
+        // geroute clips horen alleen als de AudioContext loopt — suspend uit
+        // een eerdere sessie/tab-wissel zou anders permanent stilte geven
+        if (this.graphs.has(clipId) && this.ctx && this.ctx.state === 'suspended') {
+          void this.ctx.resume().catch(() => null)
+        }
         el.play().catch(() => {})
       }
     } else {
