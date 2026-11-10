@@ -223,22 +223,14 @@ export interface TextPreset {
   name: string
   /** Groepering in de preset-kiezer. Zonder groep staat de preset bovenaan. */
   group?: string
-  /**
-   * Voorbeeldtekst die het karakter van de stijl laat zien — een citaat-stijl
-   * met één woord leest niet als een citaat. Wordt alleen overgenomen als er
-   * nog geen echte tekst op de clip staat, dus overschrijft nooit iets.
-   */
+  /** Voorbeeldtekst die het karakter van de stijl laat zien — een citaat-stijl met één woord leest niet als een citaat. Wordt alleen overgenomen als er nog geen echte tekst op de clip staat, dus overschrijft nooit iets. */
   sample?: string
   fx: Partial<TextData>
 }
 
 const EMOJI_GLOBAL_RE = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}\u{1F1E6}-\u{1F1FF}]/gu
 
-/**
- * Tekst zoals ffmpeg die rendert: emoji weg (kan ffmpeg niet), apostrof -> typografisch
- * (de ' escaping breekt de filtergraph), backslash weg. Breedte-meting gebruikt dit ook,
- * zodat preview en export exact dezelfde tekst en dus dezelfde centrering hebben.
- */
+/** Tekst zoals ffmpeg die rendert: emoji weg (kan ffmpeg niet), apostrof -> typografisch (de ' escaping breekt de filtergraph), backslash weg. Breedte-meting gebruikt dit ook, zodat preview en export exact dezelfde tekst en dus dezelfde centrering hebben. */
 export function sanitizeCaptionText(text: string): string {
   return text
     .replace(EMOJI_GLOBAL_RE, '')
@@ -765,9 +757,7 @@ export const TEXT_PRESETS: TextPreset[] = [
     }
   },
 
-  /* ---- 3D / extruded. De diepte komt uit de animatie, de dikke rand uit de
-     stroke: drawtext kan geen extrude, maar wel een brede borderw + harde
-     schaduw, en dat leest als een uitgeknipt 3D-beeld. ---- */
+  /* ---- 3D / extruded. De diepte komt uit de animatie, de dikke rand uit de stroke: drawtext kan geen extrude, maar wel een brede borderw + harde schaduw, en dat leest als een uitgeknipt 3D-beeld. ---- */
   {
     id: '3d-block',
     group: '3D diepte',
@@ -916,9 +906,7 @@ export const TEXT_PRESETS: TextPreset[] = [
     }
   },
 
-  /* ---- meer stijlen, gegroepeerd zoals boven. Elk van deze gebruikt alleen
-     eigenschappen die drawtext ook kent (kleur, dikke rand, harde schaduw,
-     achtergrondblok), zodat de export er hetzelfde uitziet. ---- */
+  /* ---- meer stijlen, gegroepeerd zoals boven. Elk van deze gebruikt alleen eigenschappen die drawtext ook kent (kleur, dikke rand, harde schaduw, achtergrondblok), zodat de export er hetzelfde uitziet. ---- */
   {
     id: 'quote-editorial',
     group: 'Cinema',
@@ -1210,11 +1198,7 @@ export interface ClipEffects {
   blur: number
   invert: number
   vignette: number
-  /**
-   * Dynamische effecten (flits, schudden, …). Ontbreken ze — zoals in oude
-   * projecten — dan gelden ze als 0; overal staat `?? 0` of `> 0` dus er
-   * hoeft niets gemigreerd te worden.
-   */
+  /** Dynamische effecten (flits, schudden, …). Ontbreken ze — zoals in oude projecten — dan gelden ze als 0; overal staat `?? 0` of `> 0` dus er hoeft niets gemigreerd te worden. */
   /** witte flitsen, sterkte 0..1 */
   flash: number
   /** flitsen per seconde */
@@ -1288,27 +1272,13 @@ export interface Clip {
   text?: TextData
   /** Expliciete marker: clip is AI-ondertitel (blijft altijd op de Subtitles-track). */
   subtitle?: boolean
-  /**
-   * Asset-id van de VIDEOCLIP waar dit audio-clip uit gehaald is. Zo weet de
-   * preview/export dat de video zelf al stil moet zijn — anders dubbel geluid.
-   */
+  /** Asset-id van de VIDEOCLIP waar dit audio-clip uit gehaald is. Zo weet de preview/export dat de video zelf al stil moet zijn — anders dubbel geluid. */
   extractedFromAssetId?: string
   /** EQ / compressor / ruisreductie / reverb op dit clipje (audio én video) */
-  audioFx?: AudioEffects
-  /**
-   * Achterstevoren afspelen (alleen video/audio, geen tekst). De preview
-   * stapt het beeld terug (een <video> kan niet zelf achteruit) en dempt het
-   * geluid — dat kan niet achteruit afgespeeld worden zonder het eerst om te
-   * keren. De export keert wél echt om (reverse/areverse).
-   */
+  audioFx?: AudioEffectsFx
+  /** Achterstevoren afspelen (alleen video/audio, geen tekst). De preview stapt het beeld terug (een <video> kan niet zelf achteruit) en dempt het geluid — dat kan niet achteruit afgespeeld worden zonder het eerst om te keren. De export keert wél echt om (reverse/areverse). */
   reversed?: boolean
-  /**
-   * Freeze: lokale seconde waarop het beeld stilstaat, null = uit. Tijdens
-   * [freezeAt, freezeAt + freezeDuration) staat het frame van `freezeAt` stil;
-   * de video eronder in dat stuk wordt overgeslagen, de timeline zelf
-   * verandert niet (geen ripple). Het geluid van de clip staat in dat stuk
-   * stil; in de export wordt het gedempt.
-   */
+  /** Freeze: lokale seconde waarop het beeld stilstaat, null = uit. Tijdens [freezeAt, freezeAt + freezeDuration) staat het frame van `freezeAt` stil; de video eronder in dat stuk wordt overgeslagen, de timeline zelf verandert niet (geen ripple). Het geluid van de clip staat in dat stuk stil; in de export wordt het gedempt. */
   freezeAt?: number | null
   /** Freeze-duur in seconden. */
   freezeDuration?: number
@@ -1348,14 +1318,8 @@ export interface ExportStartResult {
   outPath?: string
 }
 
-/**
- * Audio-effecten per clip. Bewust klein en duidelijk: drie EQ-banden,
- * compressie, ruisreductie en reverb.
- *
- * Preview-ondersteuning staat in het commentaar per veld — liever een eerlijke
- * "alleen bij export" dan een schuiver die in de preview niets doet.
- */
-export interface AudioEffects {
+/** Audio-effecten per clip. Bewust klein en duidelijk: drie EQ-banden, compressie, ruisreductie en reverb. Preview-ondersteuning staat in het commentaar per veld — liever een eerlijke "alleen bij export" dan een schuiver die in de preview niets doet. */
+export interface AudioEffectsFx {
   /** low shelf, dB (-12..12) · preview: lowshelf */
   eqLow: number
   /** peaking @1 kHz, dB (-12..12) · preview: peaking */
@@ -1368,19 +1332,24 @@ export interface AudioEffects {
   noiseReduction: number
   /** 0..1 · preview: ConvolverNode met synthetische ruimte-impuls */
   reverb: number
-}
-
-export const DEFAULT_AUDIO_EFFECTS: AudioEffects = {
-  eqLow: 0,
-  eqMid: 0,
-  eqHigh: 0,
-  compressor: 0,
-  noiseReduction: 0,
-  reverb: 0
+  /** Low-pass filter, cutoff frequentie in Hz */
+  lowPass: number
+  /** High-pass filter, cutoff frequentie in Hz */
+  highPass: number
+  /** Gate/Expander threshold, dB */
+  gateThreshold: number
+  /** Gate/Expander ratio */
+  gateRatio: number
+  /** Attack time in seconds */
+  attackTime: number
+  /** Release time in seconds */
+  releaseTime: number
+  /** Makeup gain, dB */
+  makeupGain: number
 }
 
 /** Heeft dit clipje audio-effecten (dus: is er iets om te renderen)? */
-export function hasAudioFx(fx: AudioEffects | undefined): boolean {
+export function hasAudioFx(fx: AudioEffectsFx | undefined): boolean {
   if (!fx) return false
   return (
     Math.abs(fx.eqLow) > 0.01 ||
@@ -1388,8 +1357,28 @@ export function hasAudioFx(fx: AudioEffects | undefined): boolean {
     Math.abs(fx.eqHigh) > 0.01 ||
     fx.compressor > 0.01 ||
     fx.noiseReduction > 0.01 ||
-    fx.reverb > 0.01
+    fx.reverb > 0.01 ||
+    (fx.highPass ?? 0) > 0 ||
+    (fx.lowPass ?? 0) > 0 ||
+    Math.abs(fx.gateThreshold ?? 0) > 0.5 ||
+    Math.abs(fx.makeupGain ?? 0) > 0.05
   )
+}
+
+export const DEFAULT_AUDIO_EFFECTS: AudioEffectsFx = {
+  eqLow: 0,
+  eqMid: 0,
+  eqHigh: 0,
+  compressor: 0,
+  noiseReduction: 0,
+  reverb: 0,
+  lowPass: 0,
+  highPass: 0,
+  gateThreshold: 0,
+  gateRatio: 1,
+  attackTime: 0.006,
+  releaseTime: 0.22,
+  makeupGain: 0
 }
 
 export const DEFAULT_EFFECTS: ClipEffects = {
@@ -1420,13 +1409,7 @@ export const DEFAULT_EFFECTS: ClipEffects = {
 
 export const uid = (): string => 'x' + Math.random().toString(36).slice(2, 10)
 
-/**
- * Speelt er al een eigen audio-clip onder deze videoclip? Dan moet de video
- * zelf stil, anders hoor je alles twee keer (in preview én in de export).
- * Matcht op `assetId` (companion-clip uit de import) óf op
- * `extractedFromAssetId` (echt geëxtraheerd bestand) en op tijdelijke overlap,
- * zodat een ingekorte videoclip met een langere audio-clip ook stil is.
- */
+/** Speelt er al een eigen audio-clip onder deze videoclip? Dan moet de video zelf stil, anders hoor je alles twee keer (in preview én in de export). Matcht op `assetId` (companion-clip uit de import) óf op `extractedFromAssetId` (echt geëxtraheerd bestand) en op tijdelijke overlap, zodat een ingekorte videoclip met een langere audio-clip ook stil is. */
 export function hasSeparateAudioClip(clip: Clip, clips: Clip[]): boolean {
   if (clip.kind !== 'video') return false
   const from = clip.start + 0.01
@@ -1459,12 +1442,7 @@ export interface AiGenerateResult {
   text?: string
 }
 
-/**
- * Een bewaard projectbestand (.sapremier) voor de Recent-lijst op Home.
- * Alleen projecten — geen losse mediabestanden meer. De thumbnail is een
- * kleine jpeg-dataURL van de preview op het moment van bewaren; ontbreekt
- * hij, dan toont de kaart een fallback-icoon.
- */
+/** Een bewaard projectbestand (.sapremier) voor de Recent-lijst op Home. Alleen projecten — geen losse mediabestanden meer. De thumbnail is een kleine jpeg-dataURL van de preview op het moment van bewaren; ontbreekt hij, dan toont de kaart een fallback-icoon. */
 export interface RecentProjectItem {
   path: string
   name: string
@@ -1475,11 +1453,7 @@ export interface RecentProjectItem {
   updatedAt: number
 }
 
-/**
- * Voortgang van de auto-updater. De main-process stuurt dit naar de UI in
- * plaats van blokkerende systeemdialogen, zodat een update net zo voelt als de
- * rest van de app (banner met voortgang, geen knop die "bij hangt").
- */
+/** Voortgang van de auto-updater. De main-process stuurt dit naar de UI in plaats van blokkerende systeemdialogen, zodat een update net zo voelt als de rest van de app (banner met voortgang, geen knop die "bij hangt"). */
 /** Versie + of we in een gebouwde app draaien (dev heeft geen update-feed). */
 export interface AppInfo {
   version: string

@@ -316,6 +316,18 @@ function audioFilterChain(fx: Clip['audioFx']): string {
   if (!fx) return ''
   const out: string[] = []
   const db = (v: number): number => Math.max(-12, Math.min(12, v))
+  // Filters: slider 0 = uit (bypass).
+  if (fx.highPass > 0) out.push(`highpass=f=${Math.round(Math.min(20000, fx.highPass))}`)
+  if (fx.lowPass > 0) out.push(`lowpass=f=${Math.round(Math.min(20000, fx.lowPass))}`)
+  // Gate/expander: drempel in dB → lineaire amplitude voor agate.
+  const gateDb = Math.max(-60, Math.min(0, fx.gateThreshold ?? 0))
+  if (gateDb < -0.5) {
+    const lin = Math.pow(10, gateDb / 20)
+    const ratio = Math.max(1, Math.min(10, fx.gateRatio ?? 1))
+    const attack = Math.round(Math.max(0.01, (fx.attackTime ?? 0.006) * 1000))
+    const release = Math.round(Math.max(0.01, (fx.releaseTime ?? 0.22) * 1000))
+    out.push(`agate=threshold=${lin.toFixed(6)}:ratio=${ratio.toFixed(2)}:attack=${attack}:release=${release}`)
+  }
   if (Math.abs(fx.eqLow) > 0.01) out.push(`equalizer=f=200:t=q:w=1:g=${db(fx.eqLow).toFixed(2)}`)
   if (Math.abs(fx.eqMid) > 0.01) out.push(`equalizer=f=1000:t=q:w=0.9:g=${db(fx.eqMid).toFixed(2)}`)
   if (Math.abs(fx.eqHigh) > 0.01) out.push(`equalizer=f=3500:t=q:w=1:g=${db(fx.eqHigh).toFixed(2)}`)
@@ -336,6 +348,9 @@ function audioFilterChain(fx: Clip['audioFx']): string {
     out.push('aecho=0.8:0.85:55:0.35')
     out.push('aecho=0.8:0.5:113:0.25')
   }
+  // Makeup gain na de compressor, net als de gain-node in de preview.
+  const makeup = Math.max(-24, Math.min(24, fx.makeupGain ?? 0))
+  if (Math.abs(makeup) > 0.05) out.push(`volume=${makeup.toFixed(1)}dB`)
   return out.join(',')
 }
 

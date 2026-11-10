@@ -937,6 +937,28 @@ export default function Inspector(): JSX.Element {
             />
           </div>
           <div className="fx-group">
+            <div className="fx-group-title">Filter</div>
+            <Slider
+              label="Hoogdoorlaat"
+              value={afx.highPass}
+              min={0}
+              max={500}
+              step={5}
+              unit=" Hz"
+              onChange={(v) => setAfx({ highPass: v })}
+            />
+            <Slider
+              label="Laagdoorlaat"
+              value={afx.lowPass}
+              min={0}
+              max={20000}
+              step={100}
+              unit=" kHz"
+              scale={0.001}
+              onChange={(v) => setAfx({ lowPass: v })}
+            />
+          </div>
+          <div className="fx-group">
             <div className="fx-group-title">Dynamiek &amp; ruimte</div>
             <Slider
               label="Compressor"
@@ -965,9 +987,54 @@ export default function Inspector(): JSX.Element {
               unit="%"
               onChange={(v) => setAfx({ noiseReduction: v })}
             />
+            <div className="fx-group">
+              <div className="fx-group-title">Gate/Expander</div>
+              <Slider
+                label="Threshold (dB)"
+                value={afx.gateThreshold}
+                min={-60}
+                max={0}
+                step={1}
+                unit=" dB"
+                onChange={(v) => setAfx({ gateThreshold: v })}
+              />
+              <Slider
+                label="Ratio"
+                value={afx.gateRatio}
+                min={1}
+                max={10}
+                step={0.1}
+                onChange={(v) => setAfx({ gateRatio: v })}
+              />
+              <Slider
+                label="Attack (s)"
+                value={afx.attackTime}
+                min={0}
+                max={1}
+                step={0.01}
+                onChange={(v) => setAfx({ attackTime: v })}
+              />
+              <Slider
+                label="Release (s)"
+                value={afx.releaseTime}
+                min={0}
+                max={5}
+                step={0.01}
+                onChange={(v) => setAfx({ releaseTime: v })}
+              />
+              <Slider
+                label="Makeup gain (dB)"
+                value={afx.makeupGain}
+                min={-24}
+                max={24}
+                step={0.5}
+                onChange={(v) => setAfx({ makeupGain: v })}
+              />
+            </div>
             <div className="ai-hint" style={{ marginTop: 6 }}>
-              Eq, compressor en reverb hoor je meteen in de preview. Ruisreductie werkt alleen in de
-              export — Web Audio heeft daar geen eerlijke equivalent voor.
+              Eq, compressor, filters en reverb hoor je meteen in de preview. Ruisreductie en de
+              gate/expander werken alleen in de export — Web Audio heeft daar geen eerlijke
+              equivalent voor.
             </div>
           </div>
           <div className="btn-row">

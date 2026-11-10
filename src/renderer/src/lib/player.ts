@@ -1,12 +1,11 @@
-import type { Asset, AudioEffects } from '../../../shared/types'
+import type { Asset, AudioEffectsFx } from '../../../shared/types'
 import { DEFAULT_AUDIO_EFFECTS } from '../../../shared/types'
 import { mediaUrl } from './mediaUrl'
 import { clamp } from './format'
 
-/**
- * Web Audio-keten voor één clip:
- *   source → low → mid → high → compressor → ┬→ dry ──────────┐
- *                                             └→ convolver → wet ┴→ out → speakers
+/** Web Audio-keten voor één clip:
+ *   source → highpass → lowpass → low → mid → high → comp → makeup → ┬→ dry ─────┐
+ *                                                                    └→ conv → wet ┴→ out
  *
  * De grafiek wordt alleen aangelegd als er audio-effecten staan; zonder
  * effecten blijft het native element-volume in gebruik (geen AudioContext,
@@ -19,7 +18,10 @@ interface AudioGraph {
   low: BiquadFilterNode
   mid: BiquadFilterNode
   high: BiquadFilterNode
+  lowPass: BiquadFilterNode
+  highPass: BiquadFilterNode
   comp: DynamicsCompressorNode
+  makeup: GainNode
   dry: GainNode
   wet: GainNode
   conv: ConvolverNode
@@ -137,26 +139,39 @@ export class PlayerManager {
     const high = ctx.createBiquadFilter()
     high.type = 'highshelf'
     high.frequency.value = 3500
+    const lowPass = ctx.createBiquadFilter()
+    lowPass.type = 'lowpass'
+    lowPass.frequency.value = 20000
+    const highPass = ctx.createBiquadFilter()
+    highPass.type = 'highpass'
+    highPass.frequency.value = 20
     const comp = ctx.createDynamicsCompressor()
     comp.knee.value = 12
     comp.attack.value = 0.006
     comp.release.value = 0.22
+    // DynamicsCompressorNode heeft geen makeupGain-param; eigen gain-node
+    // achter de compressor (1 = 0 dB).
+    const makeup = ctx.createGain()
+    makeup.gain.value = 1
     const dry = ctx.createGain()
     const wet = ctx.createGain()
     const conv = ctx.createConvolver()
     conv.buffer = this.reverbIR(ctx)
     const out = ctx.createGain()
-    src.connect(low)
+    src.connect(highPass)
+    highPass.connect(lowPass)
+    lowPass.connect(low)
     low.connect(mid)
     mid.connect(high)
     high.connect(comp)
-    comp.connect(dry)
-    comp.connect(conv)
+    comp.connect(makeup)
+    makeup.connect(dry)
+    makeup.connect(conv)
     conv.connect(wet)
     dry.connect(out)
     wet.connect(out)
     out.connect(ctx.destination)
-    const g: AudioGraph = { src, low, mid, high, comp, dry, wet, conv, out }
+    const g: AudioGraph = { src, low, mid, high, lowPass, highPass, comp, makeup, dry, wet, conv, out }
     this.graphs.set(clipId, g)
     // bestaand volume overzetten
     const prev = el as HTMLMediaElement & { _clipVol?: number; _trackMuted?: boolean }
@@ -164,25 +179,37 @@ export class PlayerManager {
     return g
   }
 
-  /**
-   * Zet de audio-effecten van een clip. Wordt aangeroepen bij elke
+  /** Zet de audio-effecten van een clip. Wordt aangeroepen bij elke
    * clips-wijziging; is er niets aan, dan blijft het element onaangeroerd.
    */
-  setAudioEffects(clipId: string, fx: AudioEffects | undefined): void {
+  setAudioEffects(clipId: string, fx: AudioEffectsFx | undefined): void {
     const el = this.els.get(clipId)
     if (!(el instanceof HTMLMediaElement)) return
-    const neutral = !fx || !(
-      Math.abs(fx.eqLow) > 0.01 || Math.abs(fx.eqMid) > 0.01 || Math.abs(fx.eqHigh) > 0.01 ||
-      fx.compressor > 0.01 || fx.noiseReduction > 0.01 || fx.reverb > 0.01
-    )
+    // Oude projecten missen de nieuwere velden: aanvullen met de defaults, zodat
+    // `undefined` nooit als frequentie of gain in de grafiek belandt.
+    const f: AudioEffectsFx = { ...DEFAULT_AUDIO_EFFECTS, ...(fx ?? {}) }
+    const neutral =
+      Math.abs(f.eqLow) < 0.01 &&
+      Math.abs(f.eqMid) < 0.01 &&
+      Math.abs(f.eqHigh) < 0.01 &&
+      f.compressor < 0.01 &&
+      f.noiseReduction < 0.01 &&
+      f.reverb < 0.01 &&
+      f.highPass <= 0 &&
+      f.lowPass <= 0 &&
+      Math.abs(f.gateThreshold) < 0.5 &&
+      Math.abs(f.makeupGain) < 0.05
     let g = this.graphs.get(clipId)
     if (neutral) {
       if (!g) return
       g.low.gain.value = 0
       g.mid.gain.value = 0
       g.high.gain.value = 0
+      g.highPass.frequency.value = 20
+      g.lowPass.frequency.value = 20000
       g.comp.threshold.value = 0
       g.comp.ratio.value = 1
+      g.makeup.gain.value = 1
       g.dry.gain.value = 1
       g.wet.gain.value = 0
       return
@@ -195,18 +222,21 @@ export class PlayerManager {
       return // geen audio-device/grafiek: preview valt terug op element-volume
     }
     const clampDb = (v: number): number => clamp(v, -12, 12)
-    g.low.gain.value = clampDb(fx.eqLow)
-    g.mid.gain.value = clampDb(fx.eqMid)
-    g.high.gain.value = clampDb(fx.eqHigh)
-    const c = clamp(fx.compressor, 0, 1)
+    g.low.gain.value = clampDb(f.eqLow)
+    g.mid.gain.value = clampDb(f.eqMid)
+    g.high.gain.value = clampDb(f.eqHigh)
+    // Filters: 0 = uit, dan bypass (20 Hz / 20 kHz).
+    g.highPass.frequency.value = f.highPass > 0 ? clamp(f.highPass, 20, 20000) : 20
+    g.lowPass.frequency.value = f.lowPass > 0 ? clamp(f.lowPass, 20, 20000) : 20000
+    const c = clamp(f.compressor, 0, 1)
     g.comp.threshold.value = -6 - 34 * c
     g.comp.ratio.value = 1 + 11 * c
-    const r = clamp(fx.reverb, 0, 1)
+    g.makeup.gain.value = Math.pow(10, clamp(f.makeupGain, -24, 24) / 20)
+    const r = clamp(f.reverb, 0, 1)
     g.wet.gain.value = r * 0.55
     g.dry.gain.value = 1 - r * 0.25
-    // ruisreductie heeft geen eerlijke Web Audio-tegenhanger: hoogstens een
-    // highpass als het om geroezel gaat, en dat is iets anders. Bewust niets.
-    void DEFAULT_AUDIO_EFFECTS
+    // Gate/expander en ruisreductie hebben geen eerlijke Web Audio-tegenhanger;
+    // die doen alleen mee in de export (audioFilterChain in main/export.ts).
   }
 
   element(clipId: string, asset: Asset, kind?: string): PlayerElement {

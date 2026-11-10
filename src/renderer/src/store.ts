@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import type {
   Asset,
-  AudioEffects,
+  AudioEffectsFx,
   CaptionPreset,
   CaptionWordMode,
   Clip,
@@ -47,8 +47,8 @@ export interface EditorState {
 
   addClip: (assetId: string, trackId: string, start: number) => void
   /** Audio-effecten van één clip (EQ/compressor/reverb) — ook volume, in één klap. */
-  setClipAudioFx: (clipId: string, patch: Partial<AudioEffects>) => void
-  /** Alles audio op één track resetten (handig na een experiment). */
+  setClipAudioFx: (clipId: string, patch: Partial<AudioEffectsFx>) => void
+  /** Alle audio-effecten van één clip (Fairlight-stijl): EQ, compressor, ruisreductie, reverb, filters, gate. */
   resetTrackAudioFx: (trackId: string) => void
   /** Haalt echt de audiotrack uit een video en zet die als clip op een audiotrack. */
   extractAudioToTrack: (assetId: string, sourceClipId?: string) => Promise<ExtractAudioResult>
