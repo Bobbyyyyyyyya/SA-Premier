@@ -1233,6 +1233,16 @@ export interface ClipEffects {
   flicker: number
   /** 0 = uit, 1 = horizontaal, 2 = verticaal */
   mirror: number
+  /** Temperature: -80 (koel/blauw) .. 80 (warm/goud) */
+  temperature: number
+  /** Tint: -80 (groen) .. 80 (magenta) */
+  tint: number
+  /** Color wheels - shadows */
+  shadowColor: string
+  /** Color wheels - midtones */
+  midtoneColor: string
+  /** Color wheels - highlights */
+  highlightColor: string
 }
 
 export interface Transition {
@@ -1400,7 +1410,12 @@ export const DEFAULT_EFFECTS: ClipEffects = {
   zoomSpeed: 0.5,
   grain: 0,
   flicker: 0,
-  mirror: 0
+  mirror: 0,
+  temperature: 0,
+  tint: 0,
+  shadowColor: '#000000',
+  midtoneColor: '#000000',
+  highlightColor: '#ffffff'
 }
 
 export const uid = (): string => 'x' + Math.random().toString(36).slice(2, 10)

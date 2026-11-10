@@ -22,7 +22,7 @@ export function filterString(e: ClipEffects): string {
   //
   // Oude projecten missen de nieuwe velden (undefined): `?? 0` zodat die als
   // "uit" tellen in plaats van de pipeline per ongeluk aan te zetten.
-  const v = (k: keyof ClipEffects): number => e[k] ?? 0
+  const v = (k: keyof ClipEffects): number => Number(e[k] ?? 0)
   if (
     v('brightness') === 0 && v('contrast') === 0 && v('saturation') === 0 &&
     v('grayscale') === 0 && v('sepia') === 0 && v('hue') === 0 &&

@@ -249,6 +249,39 @@ function effectFilters(e: ClipEffects, width: number, height: number): string[] 
   if (e.blur > 0) out.push(`boxblur=luma_radius=${n(e.blur)}:luma_power=1:chroma_radius=${n(e.blur / 2)}:chroma_power=1`)
   if (e.invert > 0.5) out.push('negate')
   if (e.vignette > 0) out.push(`vignette=angle=${(Math.PI * 0.25 * Math.min(1, e.vignette)).toFixed(4)}`)
+  // Color grading: temperature & tint
+  if (e.temperature !== 0) {
+    const temp = Math.min(80, Math.max(-80, e.temperature))
+    // Temperature shift: warm positive, cool negative via hue rotation
+    out.push(`hue=h=${n(temp * 0.5)}`)
+  }
+  if (e.tint !== 0) {
+    const t = Math.min(80, Math.max(-80, e.tint))
+    // Tint: green-magenta via saturation shift
+    out.push(`saturation=${n(1 + t * 0.01)}`)
+  }
+  // Color wheels: shadows/midtones/highlights via colorchannelmixer
+  if (e.shadowColor && e.shadowColor !== '#000000') {
+    const c = e.shadowColor.replace('#', '')
+    const r = parseInt(c.slice(0, 2), 16) / 255
+    const g = parseInt(c.slice(2, 4), 16) / 255
+    const b = parseInt(c.slice(4, 6), 16) / 255
+    out.push(`colorchannelmixer=rs=${n(1 - r)}:gs=${n(1 - g)}:bs=${n(1 - b)}:gw=1`)
+  }
+  if (e.midtoneColor && e.midtoneColor !== '#000000') {
+    const c = e.midtoneColor.replace('#', '')
+    const r = parseInt(c.slice(0, 2), 16) / 255
+    const g = parseInt(c.slice(2, 4), 16) / 255
+    const b = parseInt(c.slice(4, 6), 16) / 255
+    out.push(`colorchannelmixer=rm=${n(r)}:gm=${n(g)}:bm=${n(b)}:gw=1`)
+  }
+  if (e.highlightColor && e.highlightColor !== '#ffffff') {
+    const c = e.highlightColor.replace('#', '')
+    const r = parseInt(c.slice(0, 2), 16) / 255
+    const g = parseInt(c.slice(2, 4), 16) / 255
+    const b = parseInt(c.slice(4, 6), 16) / 255
+    out.push(`colorchannelmixer=rm=${n(1 - r)}:gm=${n(1 - g)}:bm=${n(1 - b)}:gw=1`)
+  }
   // Dynamische effecten (gedeelde tabellen in shared/videofx.ts — zelfde
   // getallen als de preview). Oude projecten missen deze velden: `?? 0`.
   const flash = e.flash ?? 0

@@ -1,5 +1,6 @@
 import { Fragment, memo, useCallback, useState } from 'react'
 import { useEditorStore } from '../store'
+import ColorWheel from './ColorWheel'
 import SubtitlePanel from './SubtitlePanel'
 import { CAPTION_PRESETS, DEFAULT_AUDIO_EFFECTS, hasAudioFx } from '../../../shared/types'
 import { formatTime } from '../lib/format'
@@ -998,6 +999,28 @@ export default function Inspector(): JSX.Element {
             <Slider label="Grijs" value={fx.grayscale} min={0} max={1} step={0.01} unit="%" onChange={(v) => setFx({ grayscale: v })} />
             <Slider label="Sepia" value={fx.sepia} min={0} max={1} step={0.01} unit="%" onChange={(v) => setFx({ sepia: v })} />
             <Slider label="Negatief" value={fx.invert} min={0} max={1} step={0.01} unit="%" onChange={(v) => setFx({ invert: v })} />
+          </div>
+          <div className="fx-group">
+            <div className="fx-group-title">Color grading</div>
+            <Slider label="Temperature" value={fx.temperature} min={-80} max={80} step={1} onChange={(v) => setFx({ temperature: v })} />
+            <Slider label="Tint" value={fx.tint} min={-80} max={80} step={1} onChange={(v) => setFx({ tint: v })} />
+            <div className="color-wheels">
+              <ColorWheel
+                label="Schaduw"
+                value={toHex(fx.shadowColor)}
+                onChange={(hex) => setFx({ shadowColor: hex })}
+              />
+              <ColorWheel
+                label="Midden"
+                value={toHex(fx.midtoneColor)}
+                onChange={(hex) => setFx({ midtoneColor: hex })}
+              />
+              <ColorWheel
+                label="Hooglicht"
+                value={toHex(fx.highlightColor)}
+                onChange={(hex) => setFx({ highlightColor: hex })}
+              />
+            </div>
           </div>
           <div className="fx-group">
             <div className="fx-group-title">Afwerking</div>
